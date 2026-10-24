@@ -1,0 +1,172 @@
+```#001 SQL Injection - Splunk sorgulari. Her bolum ayri bir aramadir; "=====" satirlari arasini kopyala. index/sourcetype degerlerini ortamina gore degistir.```
+
+```=================== 01-imza-avciligi ===================```
+```#001 SQLi | L1 Imza | Decode + normalize edilmis URI uzerinde SQL kaliplari. index/sourcetype degerlerini ortamina gore degistir.```
+index=web (sourcetype=access_combined OR sourcetype=nginx:plus:kv OR sourcetype=ms:iis:auto)
+| eval raw_uri=coalesce(uri, cs_uri_stem." ".cs_uri_query)
+| eval u=lower(urldecode(urldecode(raw_uri)))
+| eval u=replace(u, "(/\*.*?\*/|%09|%0a|%0d|\+|\s)+", " ")
+| eval sqli_cat=case(
+    match(u, "union( all)? select"),                                  "union",
+    match(u, "information_schema|sys\.objects|all_tables|pg_catalog|sqlite_master"), "meta_tablo",
+    match(u, "sleep ?\(|benchmark ?\(|waitfor delay|pg_sleep|dbms_pipe"), "gecikme",
+    match(u, "extractvalue ?\(|updatexml ?\(|convert ?\( ?int"),       "error_based",
+    match(u, "xp_cmdshell|into (out|dump)file|load_file ?\("),          "os_dosya",
+    match(u, "' ?(or|and) ?'?\d+'? ?= ?'?\d+|\bor 1 ?= ?1\b"),           "tautoloji",
+    true(), null())
+| where isnotnull(sqli_cat)
+| stats count AS istek min(_time) AS ilk max(_time) AS son values(sqli_cat) AS kategori values(status) AS durum dc(uri_path) AS endpoint_sayisi values(http_user_agent) AS ua BY src
+| eval sure_dk=round((son-ilk)/60,1)
+| convert ctime(ilk) ctime(son)
+| sort - istek
+
+```=================== 02-otomatik-arac ===================```
+```#001 SQLi | L1 Otomatik arac | Arac User-Agent'lari veya yuksek hacimli parametre denemesi```
+index=web sourcetype=access_combined earliest=-15m
+| eval ua=lower(http_user_agent)
+| eval arac=if(match(ua, "sqlmap|havij|sqlninja|bbqsql|jsql|nosqlmap|ghauri"), 1, 0)
+| stats count AS istek sum(arac) AS arac_isabet dc(uri_query) AS varyant values(http_user_agent) AS ua BY src, uri_path
+| where arac_isabet > 0 OR (istek > 200 AND varyant > 100)
+| eval sebep=if(arac_isabet>0, "Arac User-Agent", "Yuksek hacim + varyant")
+| sort - istek
+
+```=================== 03-davranissal-blind ===================```
+```#001 SQLi | L2 Boolean blind | Cok sayida sorgu varyanti, cok az sayida farkli yanit boyutu```
+index=web sourcetype=access_combined
+| bin _time span=5m
+| stats count AS istek dc(uri_query) AS varyant dc(bytes) AS boyut_cesidi values(status) AS durum BY _time, src, uri_path
+| where istek > 100 AND varyant > 50 AND boyut_cesidi <= 3
+| eval yorum="Ayni endpoint'e " . varyant . " farkli sorgu, yalnizca " . boyut_cesidi . " farkli yanit boyutu -> boolean blind olasiligi"
+
+```=================== 04-time-based ===================```
+```#001 SQLi | L2 Time-based | Yanit surelerinin dar bir aralikta kumelenmesi. Apache %D (mikrosaniye) -> saniyeye cevrilir; Nginx rt= alani zaten saniye.```
+index=web sourcetype=access_combined
+| eval rt=coalesce(request_time, response_time_microseconds/1000000, time_taken/1000)
+| where rt >= 2
+| eval rt_kova=round(rt,0)
+| stats count AS yavas_istek dc(uri_query) AS varyant BY src, uri_path, rt_kova
+| eventstats sum(yavas_istek) AS toplam_yavas BY src, uri_path
+| where yavas_istek >= 10 AND yavas_istek/toplam_yavas >= 0.6
+| eval yorum="Yavas isteklerin %" . round(100*yavas_istek/toplam_yavas,0) . "'i ~" . rt_kova . " sn'de toplaniyor -> kosullu gecikme olasiligi"
+
+```=================== 05-500-hata-patlamasi ===================```
+```#001 SQLi | L2 Probe asamasi | IP/endpoint basina 500 hatasi patlamasi, kendi baseline'ina gore```
+index=web sourcetype=access_combined status=500 earliest=-7d
+| bin _time span=5m
+| stats count AS hata BY _time, src, uri_path
+| eventstats avg(hata) AS ort stdev(hata) AS sd BY uri_path
+| eval z=if(sd>0, round((hata-ort)/sd,2), hata)
+| where _time >= relative_time(now(), "-15m") AND hata >= 10 AND z >= 3
+| sort - z
+
+```=================== 06-yanit-boyutu-anomalisi ===================```
+```#001 SQLi | L2/L3 Basari gostergesi | Endpoint normalinden cok buyuk 200 yaniti + SQL kalibi. YUKSEK ONCELIK.```
+index=web sourcetype=access_combined status=200 earliest=-7d
+| eventstats avg(bytes) AS ort_b stdev(bytes) AS sd_b count AS n BY uri_path
+| where _time >= relative_time(now(), "-1h") AND n > 50
+| eval z=if(sd_b>0, round((bytes-ort_b)/sd_b,2), 0)
+| eval u=lower(urldecode(urldecode(uri)))
+| where z > 4 AND match(u, "union|select|information_schema|concat|group_concat|from ")
+| table _time src uri_path bytes ort_b z u http_user_agent
+| sort - z
+
+```=================== 07-modsecurity-crs ===================```
+```#001 SQLi | ModSecurity JSON audit log | CRS 942xxx (SQLi) tetiklenmeleri; engellenen vs gecen```
+index=waf sourcetype=modsec:audit:json
+| spath path=transaction.client_ip output=src
+| spath path=transaction.request.uri output=uri
+| spath path=transaction.response.http_code output=durum
+| spath path=transaction.messages{}.details.ruleId output=rule_id
+| spath path=transaction.messages{}.message output=mesaj
+| mvexpand rule_id
+| where like(rule_id, "942%")
+| eval sonuc=if(durum=403, "ENGELLENDI", "GECTI (" . durum . ")")
+| stats count AS tetik values(mesaj) AS mesajlar values(uri) AS uri BY src, rule_id, sonuc
+| sort sonuc - tetik
+
+```=================== 08-mssql-audit ===================```
+```#001 SQLi | L3 MSSQL Audit / Extended Events | Uygulama hesabinin meta tablo erisimi, xp_cmdshell, yapilandirma degisikligi. app_account degerini kendi servis hesabinla degistir.```
+index=database sourcetype=mssql:audit server_principal_name="app_account"
+| eval s=lower(statement)
+| eval bulgu=case(
+    match(s, "xp_cmdshell"),                                 "KRITIK: xp_cmdshell",
+    match(s, "sp_configure"),                                "KRITIK: sunucu yapilandirma degisikligi",
+    match(s, "openrowset|opendatasource"),                   "YUKSEK: ad-hoc uzak veri erisimi",
+    match(s, "information_schema|sys\.(objects|tables|columns|databases)"), "YUKSEK: meta tablo kesfi",
+    match(s, "create login|alter server role|sp_addsrvrolemember"), "KRITIK: yetki/kullanici degisikligi",
+    true(), null())
+| where isnotnull(bulgu)
+| stats count min(_time) AS ilk max(_time) AS son values(statement) AS ornek BY bulgu, client_ip, database_name
+| convert ctime(ilk) ctime(son)
+
+```=================== 09-db-syntax-hatasi ===================```
+```#001 SQLi | L3 DB hata patlamasi | MySQL 1064, MSSQL 102/105/245, PostgreSQL 42601/22P02, Oracle ORA-00933/01756```
+(index=database OR index=app)
+("ER_PARSE_ERROR" OR "1064" OR "SQLSTATE[42000]" OR "42601" OR "22P02" OR "Incorrect syntax near" OR "Unclosed quotation mark" OR "ORA-00933" OR "ORA-01756" OR "You have an error in your SQL syntax")
+| bin _time span=10m
+| stats count AS hata dc(host) AS host_sayisi BY _time, sourcetype
+| where hata > 20
+
+```=================== 10-webshell-sysmon ===================```
+```#001 SQLi | L4 Post-exploitation | Web/DB servisinin kabuk acmasi (Sysmon 1) ve web dizinine betik yazilmasi (Sysmon 11). KRITIK.```
+index=sysmon (EventCode=1 OR EventCode=11)
+| eval parent=lower(ParentImage), img=lower(Image), dosya=lower(TargetFilename)
+| eval bulgu=case(
+    EventCode=1 AND match(parent, "\\\\(w3wp|sqlservr|httpd|nginx|php-cgi|tomcat\d*|java)\.exe$") AND match(img, "\\\\(cmd|powershell|pwsh|whoami|certutil|bitsadmin|net1?|nltest|rundll32|mshta)\.exe$"),
+        "Servis surecinden kabuk",
+    EventCode=11 AND match(dosya, "\\\\inetpub\\\\wwwroot\\\\|\\\\htdocs\\\\|\\\\webapps\\\\") AND match(dosya, "\.(aspx?|ashx|asmx|php\d?|jsp|jspx|war)$"),
+        "Web dizinine betik yazildi",
+    true(), null())
+| where isnotnull(bulgu)
+| table _time host bulgu ParentImage Image CommandLine TargetFilename User
+| sort - _time
+
+```=================== 11-korelasyon-rba ===================```
+```#001 SQLi | Korelasyon / RBA | Her katman kaynak IP uzerine puan yazar; 24 saatte >=100 -> notable. ES yoksa bu sorgu tek basina zamanlanmis alert olarak kullanilabilir.```
+index=web sourcetype=access_combined earliest=-24h
+| eval u=lower(urldecode(urldecode(uri))), ua=lower(http_user_agent)
+| eval imza=if(match(u, "union( all)? select|information_schema|sleep ?\(|benchmark ?\(|waitfor delay|pg_sleep|extractvalue|updatexml|xp_cmdshell|into outfile"), 1, 0)
+| eval puan=0
+| eval puan=puan + if(imza=1 AND status=403, 10, 0)
+| eval puan=puan + if(imza=1 AND status=200, 25, 0)
+| eval puan=puan + if(match(ua, "sqlmap|havij|sqlninja|ghauri"), 30, 0)
+| eval puan=puan + if(status=500, 1, 0)
+| stats sum(puan) AS risk count AS istek sum(imza) AS imza_sayisi dc(uri_path) AS endpoint values(status) AS durum BY src
+| join type=left src
+    [ search index=web sourcetype=access_combined status=200 earliest=-7d
+      | eventstats avg(bytes) AS o stdev(bytes) AS s BY uri_path
+      | where _time >= relative_time(now(), "-24h") AND s>0 AND (bytes-o)/s > 4
+      | eval u=lower(urldecode(uri))
+      | where match(u, "union|select|information_schema")
+      | stats count AS buyuk_yanit BY src
+      | eval ek_puan=60 ]
+| eval risk=risk + coalesce(ek_puan, 0)
+| where risk >= 100
+| eval oncelik=case(risk>=200, "KRITIK", risk>=100, "YUKSEK")
+| sort - risk
+
+```=================== 12-dashboard-panelleri ===================```
+```#001 SQLi | Dashboard panelleri | Her blok ayri bir panel sorgusudur.```
+
+```Panel 1 - Zaman cizelgesi: SQLi kategorilerine gore istek sayisi```
+index=web sourcetype=access_combined
+| eval u=lower(urldecode(urldecode(uri)))
+| eval kategori=case(match(u,"union( all)? select"),"union", match(u,"sleep ?\(|benchmark|waitfor delay|pg_sleep"),"gecikme", match(u,"information_schema|sys\.objects|pg_catalog"),"meta_tablo", match(u,"' ?or ?'?\d"),"tautoloji")
+| where isnotnull(kategori)
+| timechart span=1h count BY kategori
+
+```Panel 2 - En cok saldiran 10 IP + ulke```
+index=web sourcetype=access_combined
+| eval u=lower(urldecode(urldecode(uri)))
+| where match(u, "union( all)? select|information_schema|sleep ?\(|waitfor delay|' ?or ?'?\d")
+| iplocation src
+| stats count BY src, Country
+| sort - count | head 10
+
+```Panel 3 - En cok hedeflenen endpoint'ler ve basari orani```
+index=web sourcetype=access_combined
+| eval u=lower(urldecode(urldecode(uri)))
+| where match(u, "union( all)? select|information_schema|sleep ?\(|waitfor delay|' ?or ?'?\d")
+| stats count AS deneme count(eval(status=200)) AS gecen BY uri_path
+| eval gecme_orani=round(100*gecen/deneme,1)."%"
+| sort - deneme

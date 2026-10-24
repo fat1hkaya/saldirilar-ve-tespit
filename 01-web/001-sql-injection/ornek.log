@@ -1,1 +1,15 @@
-x
+# #001 SQLi - ornek loglar (lab, RFC 5737 IP aralıkları). wazuh-logtest'e "#" ile baslamayan satirlari tek tek yapistir.
+# --- access (Apache combined + %D mikrosaniye) ---
+198.51.100.10 - - [24/Oct/2026:10:00:01 +0300] "GET /products.php?id=12 HTTP/1.1" 200 4821 "-" "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Firefox/131.0" 41233
+203.0.113.45 - - [24/Oct/2026:10:02:11 +0300] "GET /products.php?id=12%27 HTTP/1.1" 500 612 "-" "sqlmap/1.8.10#stable (https://sqlmap.org)" 30211
+203.0.113.45 - - [24/Oct/2026:10:02:12 +0300] "GET /products.php?id=12%20AND%201%3D1 HTTP/1.1" 200 4821 "-" "sqlmap/1.8.10#stable (https://sqlmap.org)" 39811
+203.0.113.45 - - [24/Oct/2026:10:02:12 +0300] "GET /products.php?id=12%20AND%201%3D2 HTTP/1.1" 200 1290 "-" "sqlmap/1.8.10#stable (https://sqlmap.org)" 38122
+203.0.113.45 - - [24/Oct/2026:10:05:40 +0300] "GET /products.php?id=12%20AND%20SLEEP(5) HTTP/1.1" 200 4821 "-" "Mozilla/5.0 (X11; Linux x86_64) Chrome/129.0" 5041233
+203.0.113.45 - - [24/Oct/2026:10:05:46 +0300] "GET /products.php?id=12%20AND%20SLEEP(5) HTTP/1.1" 200 4821 "-" "Mozilla/5.0 (X11; Linux x86_64) Chrome/129.0" 5038810
+203.0.113.45 - - [24/Oct/2026:10:09:02 +0300] "GET /products.php?id=-1%20UNION%20ALL%20SELECT%20NULL,table_name,NULL%20FROM%20information_schema.tables HTTP/1.1" 200 9877 "-" "Mozilla/5.0 (X11; Linux x86_64) Chrome/129.0" 52311
+203.0.113.45 - - [24/Oct/2026:10:11:30 +0300] "GET /products.php?id=-1%20UNION%20ALL%20SELECT%20NULL,CONCAT(username,0x3a,password),NULL%20FROM%20users HTTP/1.1" 200 184220 "-" "Mozilla/5.0 (X11; Linux x86_64) Chrome/129.0" 61022
+203.0.113.45 - - [24/Oct/2026:10:18:05 +0300] "GET /uploads/x.php?c=id HTTP/1.1" 200 54 "-" "Mozilla/5.0 (X11; Linux x86_64) Chrome/129.0" 12011
+192.0.2.77 - - [24/Oct/2026:10:20:00 +0300] "GET /search.php?q=%27%20OR%20%271%27%3D%271 HTTP/1.1" 403 199 "-" "Mozilla/5.0 zgrab/0.x" 2011
+# --- modsec (Apache error log, ModSecurity) ---
+[Sat Oct 24 10:09:02.114521 2026] [security2:error] [pid 2211] [client 203.0.113.45:51544] [client 203.0.113.45] ModSecurity: Warning. detected SQLi using libinjection. [file "/usr/share/modsecurity-crs/rules/REQUEST-942-APPLICATION-ATTACK-SQLI.conf"] [line "65"] [id "942100"] [msg "SQL Injection Attack Detected via libinjection"] [severity "CRITICAL"] [hostname "shop.lab.local"] [uri "/products.php"] [unique_id "ZxkA3n8AAQEAAAiDAAAAAA"]
+[Sat Oct 24 10:20:00.501122 2026] [security2:error] [pid 2219] [client 192.0.2.77:40112] [client 192.0.2.77] ModSecurity: Access denied with code 403 (phase 2). detected SQLi using libinjection. [file "/usr/share/modsecurity-crs/rules/REQUEST-942-APPLICATION-ATTACK-SQLI.conf"] [line "65"] [id "942100"] [msg "SQL Injection Attack Detected via libinjection"] [severity "CRITICAL"] [hostname "shop.lab.local"] [uri "/search.php"] [unique_id "ZxkDYH8AAQEAAAiLAAAAAB"]

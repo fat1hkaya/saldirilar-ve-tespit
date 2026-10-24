@@ -1,0 +1,155 @@
+<!-- #001 SQL Injection - Wazuh
+  Bolum A: manager /var/ossec/etc/rules/local_rules.xml icine
+  Bolum B: manager /var/ossec/etc/ossec.conf icine
+  Bolum C: agent (web sunucusu) /var/ossec/etc/ossec.conf icine
+-->
+
+<!-- ================= BOLUM A: local_rules.xml ================= -->
+<!--
+  #001 SQL Injection - Wazuh ozel kurallari (ID blogu 100100-100199)
+  Kurulum : icerigi manager'da /var/ossec/etc/rules/local_rules.xml dosyasina ekle
+  Test    : /var/ossec/bin/wazuh-logtest  (ornek-loglar/ icindeki satirlarla)
+  Uygula  : systemctl restart wazuh-manager
+  Not     : 31100 (web access log tabani), 554 (FIM dosya eklendi), 80700 (auditd tabani)
+            ve sysmon_event1 grubu Wazuh'un yerlesik kurallaridir; surumune gore dogrula.
+-->
+
+<group name="web,attack,sqli,custom,">
+
+  <!-- L1: Gelismis imza (URL-kodlanmis halleri de kapsar) -->
+  <rule id="100100" level="8">
+    <if_sid>31100</if_sid>
+    <url type="pcre2">(?i)(union(\s|%20|\+|%09|%0a|/\*.*?\*/)+(all(\s|%20|\+))?select|information_schema|sys\.objects|pg_catalog|sleep(\s|%20)*(\(|%28)|benchmark(\(|%28)|waitfor(\s|%20|\+)+delay|pg_sleep|extractvalue(\(|%28)|updatexml(\(|%28)|xp_cmdshell|into(\s|%20|\+)+(out|dump)file)</url>
+    <description>SQLi: gelismis imza eslesmesi - $(url)</description>
+    <mitre><id>T1190</id></mitre>
+    <group>pci_dss_6.5.1,gdpr_IV_35.7.d,nist_800_53_SI.4,</group>
+  </rule>
+
+  <!-- L1: Otomatik arac User-Agent'i -->
+  <rule id="100101" level="10">
+    <if_sid>31100</if_sid>
+    <match type="pcre2">(?i)(sqlmap|havij|sqlninja|ghauri|bbqsql|jsql)</match>
+    <description>SQLi: otomatik SQLi araci User-Agent tespiti</description>
+    <mitre><id>T1190</id><id>T1595.002</id></mitre>
+  </rule>
+
+  <!-- L2/L3: Imza + HTTP 200 = olasi basari (otomatik engelleme YOK, analiste) -->
+  <rule id="100102" level="12">
+    <if_sid>100100</if_sid>
+    <id>^200</id>
+    <description>SQLi: imza eslesen istek 200 dondu - OLASI BASARILI SALDIRI</description>
+    <mitre><id>T1190</id></mitre>
+  </rule>
+
+  <!-- L2: Frekans - 2 dk icinde ayni IP'den 15 imza -->
+  <rule id="100103" level="12" frequency="15" timeframe="120">
+    <if_matched_sid>100100</if_matched_sid>
+    <same_srcip />
+    <description>SQLi: ayni kaynaktan yogun SQL injection taramasi</description>
+    <mitre><id>T1190</id></mitre>
+  </rule>
+
+  <!-- L2: Probe asamasi - 1 dk icinde ayni IP'den 20+ HTTP 500 -->
+  <rule id="100104" level="10" frequency="20" timeframe="60">
+    <if_matched_sid>31120</if_matched_sid>
+    <same_srcip />
+    <description>SQLi: ayni kaynaktan HTTP 500 patlamasi (olasi probe)</description>
+    <mitre><id>T1190</id></mitre>
+  </rule>
+
+</group>
+
+<group name="web,modsecurity,sqli,custom,">
+
+  <!-- ModSecurity / OWASP CRS 942xxx (Apache error log uzerinden) -->
+  <rule id="100110" level="9">
+    <decoded_as>apache-errorlog</decoded_as>
+    <match type="pcre2">ModSecurity: .*\[id "942\d{3}"\]</match>
+    <description>SQLi: ModSecurity CRS SQL injection kurali tetiklendi</description>
+    <mitre><id>T1190</id></mitre>
+  </rule>
+
+  <!-- Tetiklendi ama engellenmedi (DetectionOnly / anomaly esigi asilmadi) -->
+  <rule id="100111" level="12">
+    <if_sid>100110</if_sid>
+    <match type="pcre2">ModSecurity: Warning\.</match>
+    <description>SQLi: CRS SQLi kurali tetiklendi fakat istek ENGELLENMEDI</description>
+    <mitre><id>T1190</id></mitre>
+  </rule>
+
+</group>
+
+<group name="linux,auditd,sqli,post_exploitation,custom,">
+
+  <!-- auditd: www-data / mysql kullanicisi program calistirdi (audit key: www_exec, mysql_exec) -->
+  <rule id="100120" level="14">
+    <if_sid>80700</if_sid>
+    <field name="audit.key" type="pcre2">^(www_exec|mysql_exec)$</field>
+    <field name="audit.exe" type="pcre2">/(sh|bash|dash|python\d?|perl|nc|ncat|curl|wget)$</field>
+    <description>SQLi post-exploitation: web/DB servis kullanicisi kabuk veya indirme araci calistirdi ($(audit.exe))</description>
+    <mitre><id>T1059.004</id><id>T1505.003</id></mitre>
+  </rule>
+
+  <!-- FIM: web dizinine yeni betik dosyasi -->
+  <rule id="100121" level="13">
+    <if_sid>554</if_sid>
+    <field name="file" type="pcre2">(?i)(/var/www/|\\inetpub\\wwwroot\\|/htdocs/|/webapps/).*\.(php\d?|phtml|aspx?|ashx|asmx|jsp|jspx)$</field>
+    <description>SQLi post-exploitation: web dizinine yeni betik dosyasi eklendi - olasi web shell ($(file))</description>
+    <mitre><id>T1505.003</id></mitre>
+  </rule>
+
+</group>
+
+<group name="windows,sysmon,sqli,post_exploitation,custom,">
+
+  <!-- Sysmon EID 1: IIS / MSSQL / Apache surecinden kabuk -->
+  <rule id="100130" level="14">
+    <if_group>sysmon_event1</if_group>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)\\(w3wp|sqlservr|httpd|php-cgi|tomcat\d*)\.exe$</field>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\(cmd|powershell|pwsh|whoami|certutil|bitsadmin|net1?|rundll32|mshta)\.exe$</field>
+    <description>SQLi post-exploitation: $(win.eventdata.parentImage) alt sureci $(win.eventdata.image)</description>
+    <mitre><id>T1059.001</id><id>T1059.003</id><id>T1505.003</id></mitre>
+  </rule>
+
+</group>
+
+<!-- ================= BOLUM B: manager ossec.conf (aktif yanit) ================= -->
+<!--
+  #001 SQLi - Aktif yanit (manager /var/ossec/etc/ossec.conf icine)
+  Sadece TARAMA kurallarina (100101, 100103) baglanir.
+  Basari kurallari (100102, 100120, 100121, 100130) bilincli olarak baglanmaz: insana / SOAR'a gider.
+  Reverse proxy / CDN arkasindaysan srcip proxy IP'si olur: engellemeyi WAF/CDN katmaninda yap.
+-->
+<active-response>
+  <command>firewall-drop</command>
+  <location>local</location>
+  <rules_id>100101,100103</rules_id>
+  <timeout>1800</timeout>
+</active-response>
+
+<!-- Ic tarayicilari asla engelleme -->
+<global>
+  <white_list>10.10.50.20</white_list>   <!-- Nessus -->
+  <white_list>10.10.50.21</white_list>   <!-- Burp Enterprise -->
+</global>
+
+<!-- ================= BOLUM C: agent ossec.conf ================= -->
+<!-- #001 SQLi - Agent tarafi (web sunucusu) /var/ossec/etc/ossec.conf eklemeleri -->
+<ossec_config>
+  <localfile>
+    <log_format>apache</log_format>
+    <location>/var/log/apache2/access.log</location>
+  </localfile>
+  <localfile>
+    <log_format>apache</log_format>
+    <location>/var/log/apache2/error.log</location>   <!-- ModSecurity mesajlari buraya da duser -->
+  </localfile>
+  <localfile>
+    <log_format>audit</log_format>
+    <location>/var/log/audit/audit.log</location>
+  </localfile>
+
+  <syscheck>
+    <directories realtime="yes" check_all="yes">/var/www/html</directories>
+  </syscheck>
+</ossec_config>
