@@ -1,39 +1,175 @@
-# Yol Haritası (500 saldırı)
+# Yol Haritası — Kurumsal SOC için en önemli 100 saldırı
 
-Sıra kategori bazlıdır; her kategoride temelden ileriye gider. Liste yaşayan bir plandır: yeni ve güncel saldırılar eklendikçe yeniden numaralandırılmaz, sona eklenir. ✅ = tamamlandı.
+Bu liste, kurumsal bir SOC'ta (Windows/Active Directory ağırlıklı ağ, Microsoft 365/Entra ID, internete açık web uygulamaları ve sınır cihazları, hibrit bulut) **en sık alarm üreten ve en büyük hasara yol açan** saldırılardan seçildi. Numara aynı zamanda çalışma sırasıdır: bölümler bir saldırganın kurum içinde izlediği yolu takip eder — ilk erişim → kimlik bilgisi → Active Directory → yürütme ve gizlenme → kalıcılık → yanal hareket ve C2 → sızdırma ve etki; ardından ağ ve bulut.
 
-## 01 — Web uygulama saldırıları (001–080)
+**Öncelik:** 🔴 Kritik (ihlal ve fidye zincirlerinde neredeyse her zaman görülür) · 🟠 Yüksek · 🟡 Orta  
+✅ = tamamlandı
 
-001 ✅ SQL Injection · 002 Cross-Site Scripting (Reflected/Stored/DOM) · 003 Cross-Site Request Forgery · 004 OS Command Injection · 005 Path Traversal · 006 Local/Remote File Inclusion · 007 Unrestricted File Upload · 008 IDOR / BOLA · 009 Server-Side Request Forgery · 010 XML External Entity · 011 Server-Side Template Injection · 012 Insecure Deserialization (Java/PHP/.NET/Python) · 013 JWT saldırıları (alg:none, key confusion, kid injection) · 014 Authentication bypass ve mantık hataları · 015 Brute force / credential stuffing (web) · 016 Session fixation / hijacking · 017 Open Redirect · 018 Clickjacking · 019 CORS misconfiguration · 020 OAuth 2.0 / OIDC saldırıları · 021 SAML saldırıları (XSW, signature bypass) · 022 NoSQL Injection · 023 LDAP Injection · 024 XPath Injection · 025 HTTP Header Injection / CRLF · 026 Host Header Injection · 027 HTTP Request Smuggling · 028 Web Cache Poisoning · 029 Web Cache Deception · 030 Prototype Pollution · 031 GraphQL saldırıları · 032 REST API saldırıları (mass assignment, rate limit) · 033 WebSocket saldırıları · 034 Race condition · 035 Business logic zafiyetleri · 036 Password reset poisoning · 037 2FA/MFA bypass (web) · 038 Expression Language Injection · 039 Log4Shell ve JNDI injection · 040 Spring4Shell ve Spring saldırıları · 041 PHP type juggling · 042 Server-Side Includes / ESI injection · 043 CSV / Formula injection · 044 HTML injection ve dangling markup · 045 CSS injection · 046 PostMessage zafiyetleri · 047 DOM clobbering · 048 Subdomain takeover · 049 Directory listing ve hassas dosya ifşası (.git, .env, backup) · 050 Web shell yerleştirme ve tespiti · 051 Webshell aracılığıyla kalıcılık · 052 Credential harvesting sayfaları · 053 Magecart / web skimming · 054 Supply chain JS (CDN/npm script) · 055 WAF atlatma teknikleri · 056 Parameter pollution (HPP) · 057 Insecure direct API key exposure · 058 Zip Slip · 059 ReDoS · 060 Application-layer DoS (Slowloris, R.U.D.Y.) · 061 Bot saldırıları ve scraping · 062 Account takeover zinciri · 063 Exchange ProxyLogon/ProxyShell · 064 MOVEit / dosya transfer ürün zafiyetleri · 065 Citrix/Ivanti/Fortinet edge cihaz saldırıları · 066 WordPress eklenti saldırıları · 067 CMS saldırıları (Drupal/Joomla) · 068 Confluence/Jira OGNL injection · 069 PHP-CGI argument injection · 070 Insecure CI web panelleri (Jenkins/TeamCity) · 071 Server-side prototype pollution → RCE · 072 Client-side template injection · 073 Cookie tossing / cookie bombing · 074 HTTP/2 Rapid Reset · 075 Web uygulama recon ve fuzzing izleri · 076 Shellshock · 077 Heartbleed (TLS) · 078 TLS downgrade / zayıf cipher saldırıları · 079 Browser-in-the-browser · 080 AiTM reverse proxy phishing (Evilginx)
+| Bölüm | Klasör | Aralık | Adet |
+|---|---|---|---|
+| 1. Web uygulamaları ve sınır cihazları | `01-web` | 001–010 | 10 |
+| 2. Phishing ve sosyal mühendislik | `02-phishing` | 011–020 | 10 |
+| 3. Kimlik bilgisi saldırıları | `03-kimlik` | 021–030 | 10 |
+| 4. Active Directory | `04-active-directory` | 031–044 | 14 |
+| 5. Yürütme ve savunma atlatma | `05-yurutme-atlatma` | 045–055 | 11 |
+| 6. Kalıcılık ve yetki yükseltme | `06-kalicilik-yetki` | 056–065 | 10 |
+| 7. Yanal hareket ve C2 | `07-yanal-hareket-c2` | 066–075 | 10 |
+| 8. Sızdırma, ransomware ve etki | `08-sizdirma-etki` | 076–084 | 9 |
+| 9. Ağ saldırıları ve DDoS | `09-ag-ddos` | 085–090 | 6 |
+| 10. Bulut, SaaS, tedarik zinciri ve AI | `10-bulut-tedarik` | 091–100 | 10 |
 
-## 02 — Ağ saldırıları ve DDoS (081–140)
+---
 
-081 Port tarama (Nmap) tespiti · 082 ARP spoofing / poisoning · 083 MAC flooding · 084 VLAN hopping · 085 STP manipülasyonu · 086 DHCP starvation / rogue DHCP · 087 DNS spoofing / cache poisoning · 088 DNS tunneling · 089 DNS amplification DDoS · 090 NTP amplification · 091 Memcached amplification · 092 SSDP / CLDAP reflection · 093 SYN flood · 094 UDP flood · 095 ICMP flood / Smurf · 096 HTTP flood (L7 DDoS) · 097 Carpet bombing DDoS · 098 Botnet DDoS (Mirai türevleri) · 099 DDoS savunma mimarisi (scrubbing, anycast, RTBH) · 100 BGP hijacking · 101 IPv6 saldırıları (RA spoofing, SLAAC) · 102 LLMNR / NBT-NS poisoning · 103 mDNS / WPAD saldırıları · 104 SMB relay · 105 SSL stripping · 106 MITM (genel) · 107 Wi-Fi WPA2 handshake kırma · 108 WPA3 / Dragonblood · 109 Evil Twin / Rogue AP · 110 Deauthentication saldırısı · 111 KRACK · 112 PMKID saldırısı · 113 Bluetooth saldırıları · 114 SNMP saldırıları · 115 SSH brute force · 116 RDP brute force ve BlueKeep · 117 FTP/Telnet sniffing · 118 VPN saldırıları (credential stuffing, zafiyetler) · 119 Firewall atlatma / fragmentasyon · 120 IDS atlatma teknikleri · 121 C2 beaconing tespiti (ağ) · 122 Veri sızdırma (ICMP/DNS/HTTPS) · 123 Lateral movement ağ izleri · 124 Network pivoting / tunneling (chisel, ligolo) · 125 Proxy/SOCKS kötüye kullanımı · 126 Tor/anonimleştirici trafik · 127 TLS fingerprinting (JA3/JA4) ile tespit · 128 SMBGhost · 129 EternalBlue · 130 IPsec/IKE saldırıları · 131 VoIP / SIP saldırıları · 132 Routing protokol saldırıları (OSPF/EIGRP) · 133 HSRP/VRRP saldırıları · 134 CDP/LLDP ifşası · 135 NetBIOS enumeration · 136 Rogue device tespiti · 137 Network beacon analysis (Zeek) · 138 Packet capture analizi (Wireshark) · 139 NetFlow anomali tespiti · 140 Zero Trust ağ segmentasyonu atlatma
+## 1. Web uygulamaları ve sınır cihazları (001–010)
 
-## 03 — Active Directory ve kimlik (141–200)
+| # | Saldırı | MITRE ATT&CK | Öncelik | Kurumsal SOC açısından neden önemli |
+|---|---|---|---|---|
+| 001 ✅ | SQL Injection | T1190 | 🔴 | MOVEit, FortiWeb, Drupal: internete açık uygulamadan doğrudan veri ihlali |
+| 002 | Cross-Site Scripting (XSS) | T1190, T1539 | 🟠 | Oturum çalma, yönetici paneli ele geçirme; WAF alarmlarının büyük kısmı |
+| 003 | OS Command Injection | T1190, T1059 | 🔴 | Web'den doğrudan sunucuda komut; sınır cihazı CVE'lerinin çoğu bu sınıfta |
+| 004 | Path Traversal ve LFI/RFI | T1190, T1083 | 🟠 | Yapılandırma ve parola dosyası okuma; sık taranan zafiyet |
+| 005 | Dosya yükleme ve web shell | T1505.003 | 🔴 | Web saldırılarının kalıcılık adımı; IIS/Apache süreçlerinden kabuk |
+| 006 | SSRF ve bulut metadata erişimi | T1190, T1552.005 | 🟠 | İç ağa ve bulut kimlik bilgilerine (IMDS) köprü |
+| 007 | Log4Shell ve JNDI injection | T1190 | 🟠 | Kurumsal Java uygulamalarında hâlâ sömürülen kritik zafiyet sınıfı |
+| 008 | VPN ve firewall (sınır cihazı) sömürüsü | T1190, T1133 | 🔴 | Fortinet, Ivanti, Citrix, Palo Alto: 2024–2026 ihlallerinin bir numaralı giriş noktası |
+| 009 | Exchange ve SharePoint sunucu saldırıları | T1190, T1505.003 | 🔴 | ProxyShell ve ToolShell türü zincirler; kurum içi sunucuda kalıcılık |
+| 010 | IDOR/BOLA ve API kötüye kullanımı | T1190 | 🟠 | Kimlik doğrulaması olan ama yetkilendirmesi bozuk API'lerden toplu veri çekme |
 
-141 AD enumeration (BloodHound/SharpHound) · 142 Password spraying · 143 Kerberoasting · 144 AS-REP Roasting · 145 Pass-the-Hash · 146 Pass-the-Ticket · 147 Overpass-the-Hash · 148 Golden Ticket · 149 Silver Ticket · 150 Diamond / Sapphire Ticket · 151 DCSync · 152 DCShadow · 153 NTDS.dit çalınması · 154 LSASS dump · 155 NTLM relay · 156 PetitPotam ve coercion saldırıları · 157 ADCS ESC1–ESC8 · 158 ADCS ESC9–ESC15 · 159 Shadow Credentials · 160 RBCD (Resource-Based Constrained Delegation) · 161 Unconstrained delegation · 162 Constrained delegation kötüye kullanımı · 163 GPO kötüye kullanımı · 164 ACL/ACE kötüye kullanımı · 165 AdminSDHolder kalıcılığı · 166 SID History injection · 167 Skeleton Key · 168 noPac (CVE-2021-42278/42287) · 169 Zerologon · 170 PrintNightmare · 171 LAPS okuma kötüye kullanımı · 172 gMSA saldırıları · 173 GPP şifreleri · 174 Trust saldırıları (forest/domain) · 175 Kerberos delegation zincirleri · 176 MachineAccountQuota kötüye kullanımı · 177 DPAPI saldırıları · 178 Azure AD / Entra ID password spraying · 179 Entra ID token theft (PRT) · 180 Consent phishing (illicit consent grant) · 181 MFA fatigue / push bombing · 182 Device code phishing · 183 Pass-the-Cookie · 184 Golden SAML · 185 Hybrid identity (AAD Connect) saldırıları · 186 Okta/IdP saldırıları · 187 Service principal kötüye kullanımı · 188 Conditional Access atlatma · 189 Kerberos pre-auth brute force · 190 RID cycling · 191 SMB null session · 192 BadSuccessor (dMSA) · 193 Kerberos relay · 194 WebDAV coercion · 195 Exchange privilege escalation · 196 SCCM/MECM saldırıları · 197 WSUS saldırıları · 198 Tiering model ihlalleri · 199 Honeytoken / deception ile tespit · 200 AD saldırı zinciri (uçtan uca)
+## 2. Phishing ve sosyal mühendislik (011–020)
 
-## 04 — Uç nokta: Windows / Linux (201–270)
+| # | Saldırı | MITRE ATT&CK | Öncelik | Kurumsal SOC açısından neden önemli |
+|---|---|---|---|---|
+| 011 | Phishing e-posta analizi (başlık, SPF/DKIM/DMARC) | T1566 | 🔴 | L1 analistin günlük işinin en büyük kısmı; kullanıcı bildirimleri |
+| 012 | Zararlı ekler (Office makro, LNK, ISO, OneNote) | T1566.001, T1204.002 | 🔴 | Loader ve ransomware zincirlerinin klasik başlangıcı |
+| 013 | Zararlı linkler ve HTML smuggling | T1566.002, T1027.006 | 🔴 | E-posta ağ geçidini atlatan modern teslim yöntemi |
+| 014 | Business Email Compromise (BEC) | T1656, T1564.008 | 🔴 | Maddi kaybı en yüksek saldırı türü; sahte fatura, IBAN değişikliği |
+| 015 | AiTM phishing ve oturum çalma (Evilginx) | T1557, T1539 | 🔴 | MFA'yı atlatan M365 hesap ele geçirmelerinin ana yöntemi |
+| 016 | MFA fatigue / push bombing | T1621 | 🟠 | Ele geçirilmiş parola sonrası MFA'yı kullanıcıya onaylatma |
+| 017 | OAuth consent ve device code phishing | T1528, T1566.002 | 🟠 | Parola gerektirmeyen, kalıcı token veren bulut saldırısı |
+| 018 | QR kod phishing (quishing) | T1566 | 🟡 | E-posta filtrelerini atlatıp mobil cihaza kayıyor |
+| 019 | Vishing ve help desk sosyal mühendisliği | T1566.004, T1656 | 🟠 | Scattered Spider tarzı parola/MFA sıfırlatma; büyük kurumsal ihlaller |
+| 020 | ClickFix, sahte CAPTCHA, SEO poisoning ve malvertising | T1204.004, T1608.006 | 🔴 | Kullanıcıya komut yapıştırtan, 2025–2026'nın en hızlı büyüyen teslim yöntemi |
 
-201 PowerShell kötüye kullanımı · 202 AMSI bypass tespiti · 203 LOLBins (certutil, mshta, rundll32, regsvr32) · 204 WMI ile yürütme ve kalıcılık · 205 Scheduled task kalıcılığı · 206 Registry Run key kalıcılığı · 207 Service oluşturma ile kalıcılık · 208 DLL hijacking / sideloading · 209 Process injection teknikleri · 210 Process hollowing · 211 UAC bypass · 212 Token impersonation (Potato ailesi) · 213 Windows PrivEsc (unquoted path, zayıf servis izni) · 214 AlwaysInstallElevated · 215 Credential dumping (SAM/SYSTEM) · 216 Browser credential çalma · 217 Event log temizleme · 218 Timestomping · 219 Defender devre dışı bırakma · 220 BYOVD (vulnerable driver) · 221 EDR killer / unhooking · 222 COM hijacking · 223 Office makro saldırıları · 224 HTML smuggling · 225 LNK / ISO / OneNote payload'ları · 226 PsExec / SMBExec ile yanal hareket · 227 WinRM ile yanal hareket · 228 RDP hijacking · 229 DCOM ile yanal hareket · 230 Remote access tool kötüye kullanımı (AnyDesk, ScreenConnect) · 231 Linux PrivEsc (SUID, sudo, capabilities) · 232 Linux kernel exploit tespiti · 233 Cron kalıcılığı · 234 systemd kalıcılığı · 235 SSH authorized_keys kalıcılığı · 236 LD_PRELOAD rootkit · 237 eBPF rootkit · 238 Linux reverse shell tespiti · 239 Cryptominer tespiti · 240 Bash history / log silme · 241 Container escape (Linux) · 242 Docker socket kötüye kullanımı · 243 PAM backdoor · 244 Web sunucusu üzerinden Linux ele geçirme · 245 Fileless malware · 246 Living off the land (Linux) · 247 Keylogger tespiti · 248 Clipboard hijacking · 249 Screen capture / veri toplama · 250 USB tabanlı saldırılar (Rubber Ducky, BadUSB) · 251 Firmware / UEFI bootkit · 252 Secure Boot atlatma · 253 BitLocker atlatma · 254 Kimlik bilgisi dosya taraması · 255 Windows Sysmon ile tehdit avcılığı · 256 Linux auditd ile tehdit avcılığı · 257 macOS saldırıları (genel) · 258 macOS kalıcılık (LaunchAgents) · 259 Persistence via WMI subscription · 260 Image File Execution Options kötüye kullanımı · 261 Accessibility features backdoor (sticky keys) · 262 Netsh helper DLL · 263 BITS jobs · 264 Alternate Data Streams · 265 Masquerading · 266 Parent PID spoofing · 267 Command-line obfuscation · 268 Kerberos bileti uç noktada çalma · 269 RMM aracılığıyla ransomware dağıtımı · 270 Uç nokta saldırı zinciri (uçtan uca)
+## 3. Kimlik bilgisi saldırıları (021–030)
 
-## 05 — Bulut ve container (271–320)
+| # | Saldırı | MITRE ATT&CK | Öncelik | Kurumsal SOC açısından neden önemli |
+|---|---|---|---|---|
+| 021 | Brute force (RDP, SSH, VPN, web login) | T1110.001 | 🔴 | En sık tetiklenen alarm; eşik ve korelasyon tasarımının temeli |
+| 022 | Password spraying (AD ve Entra ID) | T1110.003 | 🔴 | Hesap kilitlemeye takılmadan kurum genelinde parola denemesi |
+| 023 | Credential stuffing | T1110.004 | 🟠 | Sızmış parola listeleriyle VPN ve portal hesaplarına giriş |
+| 024 | LSASS bellek dökümü | T1003.001 | 🔴 | Windows'ta kimlik bilgisi hırsızlığının merkezi; yanal hareketin yakıtı |
+| 025 | Infostealer ve tarayıcı parola/çerez hırsızlığı | T1555.003, T1539 | 🔴 | Lumma, RedLine: kurumsal SaaS hesaplarına giriş biletleri |
+| 026 | Pass-the-Hash | T1550.002 | 🔴 | Parola bilmeden NTLM hash ile kimlik doğrulama |
+| 027 | Pass-the-Ticket ve Overpass-the-Hash | T1550.003 | 🟠 | Kerberos biletleriyle yanal hareket |
+| 028 | LLMNR/NBT-NS/mDNS poisoning | T1557.001 | 🟠 | İç ağda pasif hash toplama; pentest ve saldırganların ilk adımı |
+| 029 | NTLM relay | T1557.001 | 🔴 | Relay ile sunucu ve sertifika servisi ele geçirme |
+| 030 | Token ve çerez çalma (pass-the-cookie) | T1539, T1550.004 | 🟠 | MFA sonrası oturumun başka cihazda kullanılması |
 
-271 S3 bucket ifşası · 272 IAM yetki yükseltme (AWS) · 273 Access key sızıntısı ve kötüye kullanımı · 274 EC2 metadata (IMDS) SSRF · 275 CloudTrail devre dışı bırakma · 276 AWS Lambda saldırıları · 277 AssumeRole zincirleri · 278 Azure RBAC yetki yükseltme · 279 Azure Managed Identity kötüye kullanımı · 280 Azure Storage SAS token sızıntısı · 281 Azure Automation / Runbook saldırıları · 282 GCP service account key sızıntısı · 283 GCP IAM yetki yükseltme · 284 Kubernetes API sunucusu ifşası · 285 Kubernetes RBAC kötüye kullanımı · 286 Privileged pod / hostPath kaçışı · 287 Kubelet saldırıları · 288 etcd ifşası · 289 Malicious container image · 290 Container registry saldırıları · 291 Service mesh saldırıları · 292 Serverless injection · 293 Cloud cryptojacking · 294 Cloud ransomware (S3 şifreleme) · 295 Bulut kaynak keşfi · 296 Federation saldırıları · 297 Cross-tenant saldırılar · 298 Terraform state sızıntısı · 299 Secrets manager kötüye kullanımı · 300 Cloud log manipülasyonu · 301 Bulutta veri sızdırma · 302 SaaS saldırıları (M365) · 303 Business Email Compromise (M365) · 304 Google Workspace saldırıları · 305 Snowflake tipi credential saldırıları · 306 CSPM ve bulut tespit stratejisi · 307 IaC misconfiguration · 308 CI/CD bulut kimlik bilgisi (OIDC) kötüye kullanımı · 309 Kubernetes admission controller atlatma · 310 Kubernetes secret çalma · 311 Cloud shell kötüye kullanımı · 312 Snapshot / disk image sızdırma · 313 Cloud DNS takeover · 314 API Gateway saldırıları · 315 Bulut WAF atlatma · 316 Container runtime zafiyetleri (runc) · 317 Supply chain (base image) · 318 Bulutta kalıcılık · 319 Bulut olay müdahalesi · 320 Bulut saldırı zinciri (uçtan uca)
+## 4. Active Directory (031–044)
 
-## 06 — Malware, ransomware, C2 (321–370)
+| # | Saldırı | MITRE ATT&CK | Öncelik | Kurumsal SOC açısından neden önemli |
+|---|---|---|---|---|
+| 031 | AD keşfi (BloodHound/SharpHound, AdFind) | T1087.002, T1069.002 | 🔴 | Ransomware öncesi neredeyse her vakada görülen keşif |
+| 032 | Kerberoasting | T1558.003 | 🔴 | Servis hesabı parolalarını offline kırma; tespiti öğrenilmesi gereken klasik |
+| 033 | AS-REP Roasting | T1558.004 | 🟠 | Ön kimlik doğrulaması kapalı hesaplar |
+| 034 | DCSync | T1003.006 | 🔴 | Domain'in tüm hash'lerini replikasyonla çekme |
+| 035 | NTDS.dit çalma | T1003.003 | 🔴 | Shadow copy ile domain veritabanını kopyalama |
+| 036 | Golden Ticket | T1558.001 | 🔴 | krbtgt ile sınırsız ve kalıcı domain erişimi |
+| 037 | Silver Ticket | T1558.002 | 🟠 | Tek servise sahte bilet; DC loglarında görünmez |
+| 038 | AD Certificate Services (ADCS) kötüye kullanımı | T1649 | 🔴 | ESC1–ESC8: sertifika ile domain admin; çoğu kurumda açık |
+| 039 | Kerberos delegation kötüye kullanımı (unconstrained, constrained, RBCD) | T1558, T1134 | 🟠 | Yanlış delegasyon ayarından yetki yükseltme |
+| 040 | Shadow Credentials | T1098 | 🟡 | msDS-KeyCredentialLink ile parola değiştirmeden hesap ele geçirme |
+| 041 | ACL ve GPO kötüye kullanımı | T1484.001, T1222.001 | 🟠 | Yanlış yetkilerden domain admin'e; GPO ile toplu yazılım dağıtımı |
+| 042 | Kimlik doğrulama zorlama (PetitPotam, PrinterBug) | T1187 | 🟠 | DC'yi kimlik doğrulamaya zorlayıp relay'e bağlama |
+| 043 | Kritik AD zafiyetleri (Zerologon, noPac, PrintNightmare) | T1210, T1068 | 🟠 | Yaması eksik DC'de dakikalar içinde domain ele geçirme |
+| 044 | AD kalıcılığı (AdminSDHolder, DCShadow, Skeleton Key) | T1098, T1207, T1556.001 | 🟠 | Temizlikten sonra geri dönüş kapıları |
 
-321 Malware türleri ve analiz temeli · 322 Statik analiz · 323 Dinamik analiz · 324 YARA ile tespit · 325 Ransomware yaşam döngüsü · 326 Double/triple extortion · 327 LockBit TTP'leri · 328 Akira / Black Basta / Qilin TTP'leri · 329 Ransomware erken uyarı göstergeleri · 330 Shadow copy silme · 331 Infostealer'lar (RedLine, Lumma, Vidar) · 332 Banking trojanları · 333 RAT'lar · 334 Loader'lar (QakBot, IcedID, Pikabot) · 335 Cobalt Strike tespiti · 336 Sliver / Havoc / Mythic tespiti · 337 C2 over DNS · 338 C2 over HTTPS / domain fronting · 339 C2 over SaaS (Telegram, Discord, Slack) · 340 Worm'lar · 341 Rootkit'ler · 342 Bootkit'ler · 343 Wiper'lar · 344 Mobil malware · 345 Macro malware · 346 Script tabanlı malware (JS/VBS/HTA) · 347 Polymorphic / packed malware · 348 Sandbox atlatma · 349 Anti-analysis teknikleri · 350 Botnet altyapısı · 351 Malvertising · 352 SEO poisoning · 353 Fake update (SocGholish, ClearFake) · 354 ClickFix / sahte CAPTCHA saldırıları · 355 Drive-by download · 356 Exploit kit'ler · 357 Cryptojacking malware · 358 APT kampanya analizi · 359 Threat intelligence (IoC → TTP) · 360 Sigma/YARA kural geliştirme · 361 Malware trafiği PCAP analizi · 362 Bellek analizi (Volatility) · 363 Ransomware müdahale playbook'u · 364 Ransomware müzakere ve kurtarma · 365 Living-off-the-land ransomware · 366 ESXi ransomware · 367 NAS ransomware · 368 Linux ransomware · 369 AI destekli malware · 370 Malware saldırı zinciri (uçtan uca)
+## 5. Yürütme ve savunma atlatma (045–055)
 
-## 07 — Sosyal mühendislik ve e-posta (371–410)
+| # | Saldırı | MITRE ATT&CK | Öncelik | Kurumsal SOC açısından neden önemli |
+|---|---|---|---|---|
+| 045 | Zararlı PowerShell kullanımı | T1059.001 | 🔴 | Windows saldırılarının ortak dili; Script Block Logging analizi |
+| 046 | LOLBins (certutil, mshta, rundll32, regsvr32) | T1218 | 🔴 | İmzalı Windows araçlarıyla zararlı yürütme |
+| 047 | WMI ile yürütme | T1047 | 🟠 | Yerel ve uzak komut çalıştırma, keşif |
+| 048 | Process injection ve process hollowing | T1055 | 🟠 | Meşru süreç içinde gizlenme; EDR telemetrisi okuma |
+| 049 | DLL sideloading ve DLL hijacking | T1574.001 | 🟠 | İmzalı uygulama ile zararlı DLL yükleme; APT ve loader favorisi |
+| 050 | AMSI ve ETW atlatma | T1562.001, T1562.006 | 🟠 | Güvenlik telemetrisini körleştirme |
+| 051 | EDR/AV devre dışı bırakma ve BYOVD | T1562.001, T1068 | 🔴 | Ransomware öncesi standart adım; zafiyetli sürücü yükleme |
+| 052 | Log silme ve anti-forensics | T1070.001, T1070.006 | 🔴 | Event ID 1102/104: tek başına yüksek güvenilirlikli alarm |
+| 053 | Masquerading ve parent PID spoofing | T1036, T1134.004 | 🟡 | Sahte süreç adı ve ebeveyn ile analisti yanıltma |
+| 054 | UAC bypass | T1548.002 | 🟡 | Yerel yönetici hesabında yükseltilmiş yetki |
+| 055 | Token impersonation (Potato ailesi) | T1134.001 | 🟠 | Servis hesabından SYSTEM'e; web shell sonrası klasik adım |
 
-371 Phishing temeli ve e-posta başlık analizi · 372 Spear phishing · 373 Whaling · 374 Business Email Compromise · 375 Vendor Email Compromise · 376 SPF/DKIM/DMARC atlatma · 377 Lookalike / homograph domain · 378 Quishing (QR kod) · 379 Smishing · 380 Vishing · 381 Deepfake ses / video dolandırıcılığı · 382 Callback phishing (TOAD) · 383 Help desk social engineering · 384 SIM swapping · 385 MFA fatigue · 386 AiTM phishing · 387 Phishing kit'leri · 388 Malicious attachment analizi · 389 Malicious link analizi · 390 Thread hijacking · 391 Teams / Slack phishing · 392 Fake job / recruiter saldırıları · 393 Watering hole · 394 Pretexting · 395 Baiting · 396 Tailgating / fiziksel sosyal mühendislik · 397 Insider threat · 398 OSINT ile hedef keşfi · 399 E-posta güvenlik ağ geçidi atlatma · 400 HTML attachment phishing · 401 PDF phishing · 402 Calendar invite phishing · 403 OAuth consent phishing · 404 Browser notification abuse · 405 Fake browser extension · 406 Malicious ad / sponsored search · 407 Tech support scam · 408 Romance / yatırım dolandırıcılığı (pig butchering) · 409 Phishing olay müdahalesi · 410 Phishing farkındalık programı
+## 6. Kalıcılık ve yetki yükseltme (056–065)
 
-## 08 — Mobil, IoT, OT/ICS (411–450)
+| # | Saldırı | MITRE ATT&CK | Öncelik | Kurumsal SOC açısından neden önemli |
+|---|---|---|---|---|
+| 056 | Zamanlanmış görev (scheduled task) kalıcılığı | T1053.005 | 🔴 | En yaygın Windows kalıcılık yöntemi |
+| 057 | Registry Run key ve Startup klasörü | T1547.001 | 🔴 | Commodity malware'in standart kalıcılığı |
+| 058 | Zararlı servis oluşturma | T1543.003 | 🔴 | PsExec ve ransomware dağıtımında Event ID 7045 |
+| 059 | WMI event subscription kalıcılığı | T1546.003 | 🟡 | Dosyasız, gözden kaçan kalıcılık |
+| 060 | Windows yerel yetki yükseltme (zayıf servis izinleri, unquoted path) | T1574, T1068 | 🟠 | Kullanıcıdan SYSTEM'e |
+| 061 | Linux yetki yükseltme (SUID, sudo, capabilities, kernel) | T1548.001, T1068 | 🟠 | Web sunucusu ele geçirildikten sonra root |
+| 062 | Linux kalıcılığı (cron, systemd, SSH anahtarları) | T1053.003, T1543.002, T1098.004 | 🟠 | Sunucularda uzun süreli erişim |
+| 063 | Yetkisiz hesap oluşturma ve gruba ekleme | T1136, T1098 | 🔴 | Event ID 4720/4728/4732: domain admin grubuna ekleme |
+| 064 | RMM aracı kötüye kullanımı (AnyDesk, ScreenConnect) | T1219 | 🔴 | Meşru uzak erişim araçlarıyla C2 ve kalıcılık |
+| 065 | COM hijacking, IFEO ve erişilebilirlik backdoor'ları | T1546.015, T1546.012, T1546.008 | 🟡 | Sticky keys ve benzeri gizli giriş kapıları |
 
-411 Android uygulama saldırıları · 412 iOS uygulama saldırıları · 413 Mobil API saldırıları · 414 Mobil SSL pinning atlatma · 415 Zararlı mobil uygulama · 416 Stalkerware · 417 Zero-click mobil exploit (Pegasus türü) · 418 IoT varsayılan kimlik bilgileri · 419 IoT firmware analizi · 420 IP kamera saldırıları · 421 Akıllı ev saldırıları · 422 Router saldırıları · 423 MQTT saldırıları · 424 Zigbee / Z-Wave saldırıları · 425 RFID / NFC saldırıları · 426 Araç (CAN bus) saldırıları · 427 Tıbbi cihaz saldırıları · 428 Modbus saldırıları · 429 DNP3 saldırıları · 430 S7 / Siemens PLC saldırıları · 431 OPC UA saldırıları · 432 Stuxnet analizi · 433 Industroyer / Triton analizi · 434 HMI saldırıları · 435 OT ağ segmentasyonu atlatma · 436 OT'de ransomware · 437 SCADA keşfi (Shodan) · 438 Uydu / GPS spoofing · 439 Drone saldırıları · 440 Akıllı sayaç saldırıları · 441 BMS (bina otomasyonu) saldırıları · 442 Baseband saldırıları · 443 IMSI catcher · 444 SS7 / Diameter saldırıları · 445 eSIM saldırıları · 446 POS / ATM saldırıları · 447 ATM jackpotting · 448 Kart skimming · 449 OT tespit stratejisi · 450 OT olay müdahalesi
+## 7. Yanal hareket ve C2 (066–075)
 
-## 09 — Tedarik zinciri, CI/CD, AI/LLM (451–500)
+| # | Saldırı | MITRE ATT&CK | Öncelik | Kurumsal SOC açısından neden önemli |
+|---|---|---|---|---|
+| 066 | PsExec ve SMB ile yanal hareket | T1021.002, T1569.002 | 🔴 | Ransomware dağıtımının ana aracı |
+| 067 | WinRM ve PowerShell Remoting | T1021.006 | 🟠 | Yönetici aracı görünümünde yanal hareket |
+| 068 | RDP ile yanal hareket ve oturum ele geçirme | T1021.001, T1563.002 | 🔴 | En yaygın hands-on-keyboard yanal hareket yöntemi |
+| 069 | DCOM ile uzaktan yürütme | T1021.003 | 🟡 | Daha az izlenen yanal hareket yolu |
+| 070 | Cobalt Strike tespiti | T1071.001, T1055 | 🔴 | Ransomware ve APT'lerin en yaygın C2 aracı |
+| 071 | Modern C2 çerçeveleri (Sliver, Havoc, Mythic) | T1071 | 🟠 | Cobalt Strike'ın yerini alan açık kaynak C2'ler |
+| 072 | C2 beaconing tespiti (ağ) | T1071, T1573 | 🔴 | Zamanlama ve hacim analiziyle imzasız C2 avcılığı |
+| 073 | DNS tunneling | T1071.004, T1572 | 🟠 | DNS üzerinden C2 ve veri sızdırma |
+| 074 | Tünelleme ve pivoting (ngrok, chisel, Cloudflare Tunnel, SSH) | T1572, T1090 | 🟠 | Firewall'u içeriden delen erişim |
+| 075 | Meşru servisler üzerinden C2 (Telegram, Discord, bulut API'leri) | T1102 | 🟠 | İzinli domainlere gizlenmiş C2 trafiği |
 
-451 Dependency confusion · 452 Typosquatting paketleri · 453 Malicious npm / PyPI paketleri · 454 Kompromize build sistemi (SolarWinds) · 455 XZ Utils backdoor analizi · 456 GitHub Actions saldırıları · 457 Poisoned pipeline execution · 458 Secret sızıntısı (Git) · 459 Code signing kötüye kullanımı · 460 Software update hijacking · 461 3CX tipi tedarik zinciri saldırısı · 462 MSP üzerinden saldırı (Kaseya) · 463 SBOM ve tedarik zinciri tespiti · 464 Artifact registry saldırıları · 465 IDE / VS Code extension saldırıları · 466 Git hook kötüye kullanımı · 467 Container image backdoor · 468 Self-hosted runner saldırıları · 469 Package manager cache poisoning · 470 Firmware tedarik zinciri · 471 Prompt injection (doğrudan) · 472 Indirect prompt injection · 473 LLM jailbreak teknikleri · 474 AI agent tool abuse · 475 MCP sunucu saldırıları · 476 Training data poisoning · 477 Model extraction · 478 Model inversion / membership inference · 479 Adversarial examples · 480 RAG poisoning · 481 LLM ile veri sızdırma · 482 AI destekli phishing · 483 Deepfake tespiti · 484 Malicious model dosyaları (pickle) · 485 AI ürünlerinde insecure output handling · 486 Shadow AI ve veri sızıntısı · 487 AI kod asistanı saldırıları · 488 Slopsquatting (halüsinasyon paketleri) · 489 AI agent'larda yetki yükseltme · 490 LLM DoS · 491 Vector DB saldırıları · 492 AI red teaming metodolojisi · 493 OWASP LLM Top 10 özeti · 494 MITRE ATLAS eşleşmesi · 495 AI güvenlik izleme (SOC) · 496 Zero-day yaşam döngüsü ve tespit · 497 N-day hızlı sömürü (KEV takibi) · 498 Purple team egzersizi tasarımı · 499 Detection engineering yaşam döngüsü · 500 Büyük ihlal vaka analizleri (uçtan uca)
+## 8. Sızdırma, ransomware ve etki (076–084)
+
+| # | Saldırı | MITRE ATT&CK | Öncelik | Kurumsal SOC açısından neden önemli |
+|---|---|---|---|---|
+| 076 | Bulut depolamaya veri sızdırma (rclone, MEGA) | T1567.002 | 🔴 | Double extortion'ın sızdırma adımı |
+| 077 | Ransomware yaşam döngüsü (uçtan uca) | T1486 | 🔴 | Kurumların en büyük operasyonel riski |
+| 078 | Shadow copy silme ve yedek imhası | T1490 | 🔴 | Şifrelemeden dakikalar önce görülen son uyarı |
+| 079 | Ransomware öncü göstergeleri (hands-on-keyboard aktivitesi) | T1046, T1018 | 🔴 | Şifrelemeden günler önce yakalama şansı |
+| 080 | ESXi ve hypervisor ransomware | T1486 | 🔴 | Tek seferde yüzlerce sanal makineyi şifreleme |
+| 081 | Wiper saldırıları | T1485, T1561 | 🟠 | Geri dönüşsüz veri imhası |
+| 082 | İçeriden tehdit ve veri hırsızlığı | T1052.001, T1567 | 🟠 | USB, kişisel bulut ve e-posta ile veri çıkarma |
+| 083 | Loader zararlıları (QakBot, IcedID, Latrodectus) | T1204, T1105 | 🔴 | Phishing'den ransomware'e geçiş köprüsü |
+| 084 | RAT'lar (AsyncRAT, Remcos) | T1071, T1105 | 🟠 | Commodity uzaktan erişim truva atları |
+
+## 9. Ağ saldırıları ve DDoS (085–090)
+
+| # | Saldırı | MITRE ATT&CK | Öncelik | Kurumsal SOC açısından neden önemli |
+|---|---|---|---|---|
+| 085 | Port tarama ve ağ keşfi | T1046 | 🔴 | Dış tarayıcı gürültüsü ile içeriden tarama ayrımı |
+| 086 | ARP spoofing ve MITM | T1557.002 | 🟡 | İç ağda trafik dinleme ve değiştirme |
+| 087 | DNS saldırıları (hijack, poisoning, sahte domainler) | T1584.002, T1557 | 🟠 | Domain ele geçirme ve marka taklidi |
+| 088 | Volumetrik DDoS (SYN, UDP, amplification) | T1498 | 🟠 | Bankacılık ve kamu için sürekli tehdit |
+| 089 | Uygulama katmanı DDoS (HTTP flood, HTTP/2 Rapid Reset) | T1499 | 🟠 | WAF ve CDN arkasında bile hizmet kesintisi |
+| 090 | Wi-Fi saldırıları (Evil Twin, rogue AP) | T1557.004 | 🟡 | Ofis ve misafir ağlarında kimlik bilgisi toplama |
+
+## 10. Bulut, SaaS, tedarik zinciri ve AI (091–100)
+
+| # | Saldırı | MITRE ATT&CK | Öncelik | Kurumsal SOC açısından neden önemli |
+|---|---|---|---|---|
+| 091 | M365 / Entra ID hesap ele geçirme ve posta kutusu kuralları | T1078.004, T1564.008 | 🔴 | BEC'in bulut tarafı; şüpheli giriş ve gelen kutusu kuralı |
+| 092 | Entra ID yetki yükseltme ve kalıcılık (uygulama kaydı, service principal) | T1098.001, T1098.003 | 🟠 | Bulut kimliğinde gizli kapılar |
+| 093 | AWS IAM anahtar sızıntısı ve yetki yükseltme | T1078.004, T1552 | 🟠 | Sızmış access key ile bulut hesabını ele geçirme |
+| 094 | Bulut depolama ifşası ve veri hırsızlığı (S3, Blob) | T1530 | 🟠 | Yanlış yapılandırma kaynaklı toplu veri sızıntısı |
+| 095 | Bulut loglarını kapatma ve savunma atlatma | T1562.008 | 🟡 | CloudTrail ve Audit log tahribatı |
+| 096 | Kubernetes ve container saldırıları | T1610, T1611 | 🟡 | Container kaçışı ve cluster ele geçirme |
+| 097 | Zararlı paketler ve dependency confusion | T1195.001 | 🟠 | npm/PyPI üzerinden geliştirici makinelerine sızma |
+| 098 | Ele geçirilmiş yazılım güncellemesi (SolarWinds, 3CX) | T1195.002 | 🟠 | Güvenilen yazılım üzerinden binlerce kuruma erişim |
+| 099 | CI/CD ve GitHub Actions sırlarının çalınması | T1552 | 🟡 | Pipeline sırlarıyla üretim ortamına erişim |
+| 100 | Prompt injection ve AI agent kötüye kullanımı | MITRE ATLAS AML.T0051 | 🟡 | Kurumsal AI asistanları ve ajanlarıyla veri sızdırma |
+
+---
+
+**101 ve sonrası:** İlk 100 tamamlandıktan sonra daha niş konular (OT/ICS, mobil, IoT, ileri web zafiyetleri, ileri AD/bulut teknikleri) ayrı bir liste olarak eklenecek.

@@ -1,6 +1,6 @@
 # Saldırılar ve Tespit
 
-> 500+ siber saldırının **nasıl çalıştığı, saldırı akışında hangi izleri bıraktığı, nasıl tespit edildiği ve nasıl önlendiği** — SOC analisti bakış açısıyla, Türkçe, profesyonel seviyede.
+> Kurumsal SOC için **en önemli 100 siber saldırının** nasıl çalıştığı, saldırı akışında hangi izleri bıraktığı, nasıl tespit edildiği ve nasıl önlendiği — SOC analisti bakış açısıyla, Türkçe, profesyonel seviyede.
 
 Her saldırı aynı şablonla, baştan sona işlenir: kök neden → saldırı akışı ve her aşamanın izi → log kaynakları ve gösterge analizi → **Splunk SPL** sorguları → **Wazuh** decoder/kural/aktif yanıt → önleme → olay müdahale playbook'u → TryHackMe ve LetsDefend pratiği.
 
@@ -16,25 +16,28 @@ Bu repo **savunma (blue team) eğitimi** amaçlıdır. Saldırı akışı bölü
 
 ## İlerleme
 
-| # | Saldırı | Kategori | Seviye | Tarih | Klasör |
+| # | Saldırı | Bölüm | Öncelik | Tarih | Klasör |
 |---|---|---|---|---|---|
-| 001 | SQL Injection (SQLi) | Web | Temel → İleri | 2026-10-24 | [01-web/001-sql-injection](01-web/001-sql-injection/) |
+| 001 | SQL Injection (SQLi) | 1. Web ve sınır cihazları | 🔴 Kritik | 2026-10-24 | [01-web/001-sql-injection](01-web/001-sql-injection/) |
 
-Tüm plan: [ROADMAP.md](ROADMAP.md)
+Tüm liste ve öncelikler: [ROADMAP.md](ROADMAP.md)
 
-## Kategoriler
+## Kapsam
 
-| Klasör | Kategori | Planlanan |
+Liste, kurumsal bir SOC'un gerçekte karşılaştığı ortama göre seçildi: Windows ve Active Directory ağırlıklı iç ağ, Microsoft 365 ve Entra ID, internete açık web uygulamaları ve VPN/firewall gibi sınır cihazları, hibrit bulut. Bölümler bir saldırganın kurum içinde izlediği yolu takip eder; numara aynı zamanda çalışma sırasıdır.
+
+| Bölüm | Klasör | Aralık |
 |---|---|---|
-| `01-web` | Web uygulama saldırıları | ~80 |
-| `02-ag-ddos` | Ağ saldırıları ve DDoS | ~60 |
-| `03-active-directory` | Active Directory ve kimlik | ~60 |
-| `04-windows-linux` | Uç nokta: Windows / Linux (PrivEsc, persistence, LOLBins) | ~70 |
-| `05-bulut` | Bulut (AWS / Azure / GCP / Kubernetes / container) | ~50 |
-| `06-malware` | Malware, ransomware, C2 | ~50 |
-| `07-sosyal-muhendislik` | Phishing, BEC, MFA saldırıları | ~40 |
-| `08-mobil-iot-ot` | Mobil, IoT, OT/ICS | ~40 |
-| `09-tedarik-zinciri-ai` | Tedarik zinciri, CI/CD, AI/LLM saldırıları | ~50 |
+| 1. Web uygulamaları ve sınır cihazları | `01-web` | 001–010 |
+| 2. Phishing ve sosyal mühendislik | `02-phishing` | 011–020 |
+| 3. Kimlik bilgisi saldırıları | `03-kimlik` | 021–030 |
+| 4. Active Directory | `04-active-directory` | 031–044 |
+| 5. Yürütme ve savunma atlatma | `05-yurutme-atlatma` | 045–055 |
+| 6. Kalıcılık ve yetki yükseltme | `06-kalicilik-yetki` | 056–065 |
+| 7. Yanal hareket ve C2 | `07-yanal-hareket-c2` | 066–075 |
+| 8. Sızdırma, ransomware ve etki | `08-sizdirma-etki` | 076–084 |
+| 9. Ağ saldırıları ve DDoS | `09-ag-ddos` | 085–090 |
+| 10. Bulut, SaaS, tedarik zinciri ve AI | `10-bulut-tedarik` | 091–100 |
 
 ## Her saldırı klasörünün yapısı
 
@@ -52,7 +55,7 @@ NNN-saldiri-adi/
 
 - **Splunk:** `splunk.spl` içindeki `=====` ayraçları arasındaki her bölüm ayrı bir aramadır; Search & Reporting'e yapıştır, `index`/`sourcetype` değerlerini kendi ortamına göre değiştir. Kalıcı hale getirmek için *Save As → Alert* veya ES'te *Correlation Search*.
 - **Wazuh:** `wazuh.xml` Bölüm A'yı manager'da `/var/ossec/etc/rules/local_rules.xml` dosyasına ekle, `/var/ossec/bin/wazuh-logtest` ile `ornek.log` satırlarını test et, sonra `systemctl restart wazuh-manager`.
-- **Kural ID düzeni:** Wazuh özel kural ID'leri saldırı numarasına göre bloklanır: `#001 → 100100–100199`, `#002 → 100200–100299`, … çakışma olmaz.
+- **Kural ID düzeni:** Wazuh özel kural ID'leri saldırı numarasına göre 100'lük bloklardır: `100000 + (numara × 100)`. Örnek: `#001 → 100100–100199`, `#045 → 104500–104599`, `#100 → 110000–110099`. Çakışma olmaz.
 
 ## Lisans
 
