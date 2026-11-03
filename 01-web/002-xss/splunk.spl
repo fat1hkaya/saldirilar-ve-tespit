@@ -1,0 +1,214 @@
+```#002 Cross-Site Scripting (XSS) - Splunk sorgulari. Her bolum ayri bir aramadir; "=====" satirlari arasini kopyala. index/sourcetype degerlerini ortamina gore degistir.```
+
+```=================== 01-imza-avciligi ===================```
+```#002 XSS | L1 Imza | Cift URL decode + HTML entity normalizasyonu sonrasi XSS yapi kategorileri. Tek kelimeye degil yapiya bakar.```
+index=web (sourcetype=access_combined OR sourcetype=nginx:plus:kv OR sourcetype=ms:iis:auto)
+| eval raw_uri=coalesce(uri, cs_uri_stem." ".cs_uri_query)
+| eval u=lower(urldecode(urldecode(raw_uri)))
+| eval u=replace(u, "&#x0*3c;?|&#0*60;?|&lt;?", "<")
+| eval u=replace(u, "&#x0*3e;?|&#0*62;?|&gt;?", ">")
+| eval u=replace(u, "(%09|%0a|%0d|\+|/|\s)+", " ")
+| eval xss_cat=case(
+    match(u, "< ?script"),                                            "script_etiketi",
+    match(u, "< ?(svg|img|iframe|object|embed|body|details|video|audio|math|input|a)\b[^>]*\bon[a-z]{3,20} ?="), "olay_isleyici",
+    match(u, "\bon(error|load|focus|toggle|mouseover|pointerover|animationstart|begin) ?="), "olay_isleyici",
+    match(u, "javascript ?:|vbscript ?:|data ?: ?text ?/ ?html"),     "tehlikeli_sema",
+    match(u, "document ?\. ?(cookie|domain|location)|window ?\. ?location|\.innerhtml"), "dom_erisimi",
+    match(u, "fromcharcode|atob ?\(|eval ?\(|string ?\. ?raw"),        "gizleme_fonksiyonu",
+    match(raw_uri, "(?i)&#x?[0-9a-f]{2,4};?.*&#x?[0-9a-f]{2,4}"),      "entity_kodlama",
+    true(), null())
+| where isnotnull(xss_cat)
+| stats count AS istek min(_time) AS ilk max(_time) AS son values(xss_cat) AS kategori values(status) AS durum values(method) AS yontem dc(uri_path) AS endpoint_sayisi values(http_user_agent) AS ua BY src
+| eval sure_dk=round((son-ilk)/60,1)
+| convert ctime(ilk) ctime(son)
+| sort - istek
+
+```=================== 02-otomatik-arac ===================```
+```#002 XSS | L1 Otomatik arac | XSS / web tarayici User-Agent'lari veya ayni endpoint'e yuksek varyant hacmi```
+index=web sourcetype=access_combined earliest=-15m
+| eval ua=lower(http_user_agent)
+| eval arac=if(match(ua, "dalfox|xsstrike|xsser|nuclei|acunetix|nikto|wapiti|arachni|zgrab|burp"), 1, 0)
+| stats count AS istek sum(arac) AS arac_isabet dc(uri_query) AS varyant values(http_user_agent) AS ua BY src, uri_path
+| where arac_isabet > 0 OR (istek > 200 AND varyant > 100)
+| eval sebep=if(arac_isabet>0, "Arac User-Agent", "Yuksek hacim + varyant")
+| sort - istek
+
+```=================== 03-yansima-testi ===================```
+```#002 XSS | L2 Yansima testi (probe) | Tek IP'nin cok sayida parametreye ozel karakter (< > " ' `) gondermesi. Arac UA'sini degistirse de yakalar.```
+index=web sourcetype=access_combined earliest=-15m
+| eval q=urldecode(urldecode(coalesce(uri_query, "")))
+| where match(q, "[<>\"'`]")
+| rex field=q max_match=20 "(?<param>[A-Za-z0-9_\-]+)=[^&]*[<>\"'`]"
+| mvexpand param
+| stats count AS istek dc(param) AS param_sayisi dc(uri_path) AS endpoint_sayisi values(param) AS parametreler values(status) AS durum BY src
+| where istek >= 30 AND (param_sayisi >= 5 OR endpoint_sayisi >= 10)
+| eval yorum=param_sayisi . " farkli parametre, " . endpoint_sayisi . " endpoint'e ozel karakter denemesi -> sistematik yansima testi"
+| sort - istek
+
+```=================== 04-modsecurity-crs-941 ===================```
+```#002 XSS | ModSecurity JSON audit log | CRS 941xxx (XSS) tetiklenmeleri; engellenen vs gecen, yontem ve endpoint ayrimi```
+index=waf sourcetype=modsec:audit:json
+| spath path=transaction.client_ip output=src
+| spath path=transaction.request.uri output=uri
+| spath path=transaction.request.method output=yontem
+| spath path=transaction.response.http_code output=durum
+| spath path=transaction.messages{}.details.ruleId output=rule_id
+| spath path=transaction.messages{}.message output=mesaj
+| mvexpand rule_id
+| where like(rule_id, "941%")
+| eval sonuc=if(durum=403, "ENGELLENDI", "GECTI (" . durum . ")")
+| eval kalici_olasi=if(yontem="POST" AND match(uri, "(?i)comment|ticket|profile|review|message|post|upload|signature|bio"), "EVET", "hayir")
+| stats count AS tetik values(mesaj) AS mesajlar values(uri) AS uri BY src, rule_id, yontem, sonuc, kalici_olasi
+| sort - kalici_olasi sonuc - tetik
+
+```=================== 05-stored-xss-korelasyonu ===================```
+```#002 XSS | L2/L3 Stored XSS korelasyonu | WAF'in ENGELLEMEDIGI XSS'li POST + sonradan ayni sayfayi goruntuleyen kullanicilar. Endpoint eslemesini uygulamana gore duzenle (ornek: POST /support/ticket -> GET /admin/tickets/*). YUKSEK ONCELIK.```
+index=waf sourcetype=modsec:audit:json earliest=-24h
+| spath path=transaction.client_ip output=saldirgan
+| spath path=transaction.request.uri output=uri
+| spath path=transaction.request.method output=yontem
+| spath path=transaction.response.http_code output=durum
+| spath path=transaction.messages{}.details.ruleId output=rule_id
+| where yontem="POST" AND durum!=403 AND match(mvjoin(rule_id, ","), "941\d{3}")
+| eval hedef_sayfa=case(match(uri, "^/support/ticket"), "/admin/tickets/", match(uri, "^/comments"), "/admin/comments", true(), uri)
+| stats min(_time) AS kayit_zamani values(saldirgan) AS saldirgan BY hedef_sayfa
+| join type=inner hedef_sayfa
+    [ search index=web sourcetype=access_combined method=GET status=200 earliest=-24h
+      | eval hedef_sayfa=case(match(uri_path, "^/admin/tickets/"), "/admin/tickets/", match(uri_path, "^/admin/comments"), "/admin/comments", true(), uri_path)
+      | stats min(_time) AS ilk_goruntuleme dc(src) AS goruntuleyen_ip values(src) AS goruntuleyenler values(user) AS kullanicilar BY hedef_sayfa ]
+| where ilk_goruntuleme > kayit_zamani
+| eval gecikme_dk=round((ilk_goruntuleme-kayit_zamani)/60,1)
+| convert ctime(kayit_zamani) ctime(ilk_goruntuleme)
+| table hedef_sayfa saldirgan kayit_zamani ilk_goruntuleme gecikme_dk goruntuleyen_ip goruntuleyenler kullanicilar
+
+```=================== 06-csp-ihlal-raporlari ===================```
+```#002 XSS | L3 Tarayicida calisma | CSP ihlal raporlari (JSON, report-uri / report-to). disposition=report -> betik CALISTI. Eklenti gurultusu filtrelenir.```
+index=web sourcetype=csp:report
+| spath path=csp-report.document-uri output=sayfa
+| spath path=csp-report.violated-directive output=direktif
+| spath path=csp-report.effective-directive output=etkin
+| spath path=csp-report.blocked-uri output=engellenen
+| spath path=csp-report.disposition output=mod
+| eval direktif=coalesce(etkin, direktif)
+| where match(direktif, "^script-src") AND NOT match(engellenen, "^(chrome|moz|safari-web|ms-browser)-extension")
+| eval engellenen_alan=if(match(engellenen, "^https?://"), replace(engellenen, "^https?://([^/:]+).*", "\1"), engellenen)
+| eval yonetici_sayfasi=if(match(sayfa, "(?i)/admin|/panel|/support|/owa/|/manage"), "EVET", "hayir")
+| eval durum=if(mod="report", "BETIK CALISTI (report-only)", "ENGELLENDI (enforce)")
+| stats count AS rapor dc(src) AS etkilenen_tarayici min(_time) AS ilk max(_time) AS son values(sayfa) AS sayfalar BY engellenen_alan, direktif, durum, yonetici_sayfasi
+| convert ctime(ilk) ctime(son)
+| sort - yonetici_sayfasi durum - rapor
+
+```=================== 07-blind-xss-geri-arama ===================```
+```#002 XSS | L3 Blind XSS | Kullanici / yonetici tarayicilarindan herkese acik OAST / geri arama servislerine trafik. Proxy (CIM Web) verisi. Liste ornektir; kendi tehdit istihbaratinla genislet. KRITIK.```
+index=proxy (sourcetype=zscaler:nss:web OR sourcetype=bluecoat:proxysg:access:kv OR sourcetype=pan:threat OR sourcetype=squid:access)
+| eval dest_host=lower(coalesce(dest_host, url_domain, dest))
+| where match(dest_host, "(\.|^)(oast\.(pro|live|site|online|fun|me)|interact\.sh|burpcollaborator\.net|oastify\.com|xss\.ht|xss\.report|bxss\.me|canarytokens\.com|requestbin\.net|pipedream\.net|webhook\.site)$")
+| eval referer_admin=if(match(http_referrer, "(?i)/admin|/panel|/support|/helpdesk|/owa/"), "EVET", "hayir")
+| stats count min(_time) AS ilk max(_time) AS son values(url) AS url values(http_referrer) AS referer BY user, src, dest_host, referer_admin
+| convert ctime(ilk) ctime(son)
+| sort - referer_admin - count
+
+```=================== 08-oturum-calma ===================```
+```#002 XSS | L4 Oturum calma | Ayni oturum kimligi kisa surede farkli IP ve User-Agent'tan. Uygulama log'unda session_id (hash'li) olmali.```
+index=app sourcetype=app:session earliest=-24h
+| bin _time span=30m
+| stats dc(src_ip) AS ip_sayisi dc(user_agent) AS ua_sayisi values(src_ip) AS ipler values(user_agent) AS uas values(action) AS islemler min(_time) AS ilk BY session_id, user
+| where ip_sayisi >= 2 AND ua_sayisi >= 2
+| iplocation prefix=geo_ ipler
+| eval hassas=if(match(mvjoin(islemler, ","), "(?i)password|email_change|mfa|api_key|role|admin"), "EVET", "hayir")
+| convert ctime(ilk)
+| sort - hassas - ip_sayisi
+
+```=================== 09-m365-posta-kurali ===================```
+```#002 XSS | L4 Webmail XSS sonrasi kalicilik | M365 Unified Audit: dis adrese yonlendiren / silen gelen kutusu kurallari ve posta kutusu yonlendirme. KRITIK. (Splunk Add-on for Microsoft Office 365)```
+index=o365 sourcetype="o365:management:activity" Workload=Exchange (Operation="New-InboxRule" OR Operation="Set-InboxRule" OR Operation="UpdateInboxRules" OR Operation="Set-Mailbox")
+| spath path=Parameters{}.Name output=p_ad
+| spath path=Parameters{}.Value output=p_deger
+| eval parametreler=mvzip(p_ad, p_deger, "=")
+| eval yonlendirme=mvfilter(match(parametreler, "^(ForwardTo|RedirectTo|ForwardAsAttachmentTo|ForwardingSmtpAddress|ForwardingAddress)="))
+| eval silme=mvfilter(match(parametreler, "^(DeleteMessage|MoveToFolder|MarkAsRead)=(True|RSS|Conversation History|Archive)"))
+| eval kural_adi=mvfilter(match(parametreler, "^Name="))
+| where isnotnull(yonlendirme) OR isnotnull(silme) OR Operation="UpdateInboxRules"
+| eval dis_adres=if(match(mvjoin(yonlendirme, ","), "@") AND NOT match(mvjoin(yonlendirme, ","), "(?i)@(lab\.local|kurum\.com\.tr)"), "EVET", "hayir")
+| table _time UserId ClientIP Operation kural_adi yonlendirme silme dis_adres
+| sort - dis_adres - _time
+
+```=================== 10-webmail-anormal-oturum ===================```
+```#002 XSS | L4 Webmail / OWA | Tek kullanicinin kisa surede olagan disi hizda posta okumasi + ayar degisikligi (betik otomasyonu izi). M365 MailItemsAccessed icin Audit Premium gerekir.```
+index=o365 sourcetype="o365:management:activity" Workload=Exchange (Operation="MailItemsAccessed" OR Operation="Set-InboxRule" OR Operation="New-InboxRule" OR Operation="Set-MailboxJunkEmailConfiguration" OR Operation="Add-MailboxPermission") earliest=-7d
+| bin _time span=10m
+| eval okuma=if(Operation="MailItemsAccessed", 1, 0), ayar=if(Operation!="MailItemsAccessed", 1, 0)
+| stats sum(okuma) AS okuma sum(ayar) AS ayar_degisikligi values(ClientIP) AS ip BY _time, UserId
+| eventstats avg(okuma) AS ort stdev(okuma) AS sd BY UserId
+| eval z=if(sd>0, round((okuma-ort)/sd,2), 0)
+| where _time >= relative_time(now(), "-24h") AND ((z >= 4 AND okuma >= 50) OR (ayar_degisikligi > 0 AND z >= 2))
+| sort - z
+
+```=================== 11-korelasyon-rba ===================```
+```#002 XSS | Korelasyon / RBA | Kaynak IP (deneme/teslimat) ve kullanici (kurban) icin ayri risk puanlari. IP >= 60 veya kullanici >= 100 -> notable. ES yoksa zamanlanmis alert olarak kullan.```
+index=web sourcetype=access_combined earliest=-24h
+| eval u=lower(urldecode(urldecode(uri))), ua=lower(http_user_agent)
+| eval u=replace(u, "&#x0*3c;?|&#0*60;?|&lt;?", "<")
+| eval imza=if(match(u, "< ?script|\bon[a-z]{3,20} ?=|javascript ?:|document ?\. ?cookie"), 1, 0)
+| eval puan=0
+| eval puan=puan + if(imza=1 AND status=403, 5, 0)
+| eval puan=puan + if(imza=1 AND status=200, 15, 0)
+| eval puan=puan + if(match(ua, "dalfox|xsstrike|xsser"), 25, 0)
+| stats sum(puan) AS puan BY src
+| eval risk_nesnesi="ip:" . src
+| append
+    [ search index=waf sourcetype=modsec:audit:json earliest=-24h
+      | spath path=transaction.client_ip output=src
+      | spath path=transaction.request.method output=yontem
+      | spath path=transaction.response.http_code output=durum
+      | spath path=transaction.messages{}.details.ruleId output=rule_id
+      | where yontem="POST" AND durum!=403 AND match(mvjoin(rule_id, ","), "941\d{3}")
+      | stats count BY src | eval puan=50, risk_nesnesi="ip:" . src ]
+| append
+    [ search index=web sourcetype=csp:report earliest=-24h
+      | spath path=csp-report.disposition output=mod
+      | spath path=csp-report.document-uri output=sayfa
+      | where match(sayfa, "(?i)/admin|/support|/owa/")
+      | eval puan=if(mod="report", 60, 30)
+      | stats max(puan) AS puan BY user | eval risk_nesnesi="user:" . user ]
+| append
+    [ search index=o365 sourcetype="o365:management:activity" (Operation="New-InboxRule" OR Operation="Set-InboxRule") ("ForwardTo" OR "RedirectTo" OR "ForwardAsAttachmentTo") earliest=-24h
+      | stats count BY UserId | eval puan=100, risk_nesnesi="user:" . UserId ]
+| stats sum(puan) AS risk BY risk_nesnesi
+| eval tur=if(like(risk_nesnesi, "user:%"), "kullanici", "ip")
+| where (tur="ip" AND risk>=60) OR (tur="kullanici" AND risk>=100)
+| eval oncelik=case(tur="kullanici" AND risk>=150, "KRITIK", tur="kullanici", "YUKSEK", risk>=100, "YUKSEK", true(), "ORTA")
+| sort - risk
+
+```=================== 12-dashboard-panelleri ===================```
+```#002 XSS | Dashboard panelleri | Her blok ayri bir panel sorgusudur.```
+
+```Panel 1 - Zaman cizelgesi: XSS kategorilerine gore istek sayisi```
+index=web sourcetype=access_combined
+| eval u=lower(urldecode(urldecode(uri)))
+| eval u=replace(u, "&#x0*3c;?|&#0*60;?|&lt;?", "<")
+| eval kategori=case(match(u,"< ?script"),"script", match(u,"\bon[a-z]{3,20} ?="),"olay_isleyici", match(u,"javascript ?:"),"js_sema", match(u,"document ?\. ?cookie"),"cerez")
+| where isnotnull(kategori)
+| timechart span=1h count BY kategori
+
+```Panel 2 - CSP ihlalleri: enforce vs report, gunluk```
+index=web sourcetype=csp:report
+| spath path=csp-report.disposition output=mod
+| timechart span=1d count BY mod
+
+```Panel 3 - En cok hedeflenen endpoint'ler ve WAF'tan gecme orani```
+index=waf sourcetype=modsec:audit:json
+| spath path=transaction.request.uri output=uri
+| spath path=transaction.response.http_code output=durum
+| spath path=transaction.messages{}.details.ruleId output=rule_id
+| where match(mvjoin(rule_id, ","), "941\d{3}")
+| rex field=uri "^(?<uri_path>[^?]+)"
+| stats count AS deneme count(eval(durum!=403)) AS gecen BY uri_path
+| eval gecme_orani=round(100*gecen/deneme,1)."%"
+| sort - deneme
+
+```Panel 4 - Son 7 gunde olusturulan dis yonlendirmeli posta kurallari```
+index=o365 sourcetype="o365:management:activity" (Operation="New-InboxRule" OR Operation="Set-InboxRule") ("ForwardTo" OR "RedirectTo" OR "ForwardAsAttachmentTo") earliest=-7d
+| stats count latest(_time) AS son values(ClientIP) AS ip BY UserId
+| convert ctime(son)
+| sort - son

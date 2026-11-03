@@ -1,0 +1,177 @@
+<!-- #002 Cross-Site Scripting (XSS) - Wazuh
+  Bolum A: manager /var/ossec/etc/rules/local_rules.xml icine
+  Bolum B: manager /var/ossec/etc/ossec.conf icine
+  Bolum C: agent (web sunucusu) /var/ossec/etc/ossec.conf icine
+-->
+
+<!-- ================= BOLUM A: local_rules.xml ================= -->
+<!--
+  #002 XSS - Wazuh ozel kurallari (ID blogu 100200-100299)
+  Kurulum : icerigi manager'da /var/ossec/etc/rules/local_rules.xml dosyasina ekle
+  Test    : /var/ossec/bin/wazuh-logtest  (ornek.log icindeki satirlarla)
+  Uygula  : systemctl restart wazuh-manager
+  Not     : 31100 (web access log tabani), 31105 (yerlesik XSS girisimi), apache-errorlog decoder,
+            json decoder ve office365 kural grubu Wazuh'un yerlesik bilesenleridir; surumune gore dogrula.
+  Sira    : 100201 (arac UA) 100200'den ONCE tanimlanir; ayni parent altinda ilk eslesen kardes kural kazanir.
+-->
+
+<group name="web,attack,xss,custom,">
+
+  <!-- L1: XSS / web tarayici araci User-Agent'i (imzadan once degerlendirilir) -->
+  <rule id="100201" level="10">
+    <if_sid>31100,31105</if_sid>
+    <match type="pcre2">(?i)(dalfox|xsstrike|xsser)</match>
+    <description>XSS: otomatik XSS tarama araci User-Agent tespiti</description>
+    <mitre><id>T1190</id><id>T1595.002</id></mitre>
+  </rule>
+
+  <!-- L1: Gelismis imza (URL ve HTML entity kodlu halleri de kapsar) -->
+  <rule id="100200" level="8">
+    <if_sid>31100,31105</if_sid>
+    <url type="pcre2">(?i)((&lt;|%3c|&amp;lt;?|&amp;#x0*3c;?|&amp;#0*60;?|%26lt(;|%3b)?|%26%23x0*3c(;|%3b)?|%26%2360(;|%3b)?)(\s|%20|/|%2f)*(script|svg|img|iframe|object|embed|body|details|video|math)|\bon(error|load|focus|toggle|mouseover|pointerover|animationstart|begin)(\s|%20)*(=|%3d)|(javascript|vbscript)(\s|%20|%09)*(:|%3a)|document(\.|%2e)(cookie|domain)|fromcharcode)</url>
+    <description>XSS: gelismis imza eslesmesi - $(url)</description>
+    <mitre><id>T1190</id><id>T1189</id></mitre>
+    <group>pci_dss_6.5.7,gdpr_IV_35.7.d,nist_800_53_SI.4,</group>
+  </rule>
+
+  <!-- L2: Imza + HTTP 200 = yansima olasi (reflected). Basari degil, dogrulama gerektirir. -->
+  <rule id="100202" level="10">
+    <if_sid>100200</if_sid>
+    <id>^200</id>
+    <description>XSS: imza eslesen istek 200 dondu - yanitta kodlanmadan yansiyip yansimadigini dogrula</description>
+    <mitre><id>T1190</id></mitre>
+  </rule>
+
+  <!-- L2: Frekans - 2 dk icinde ayni IP'den 15 imza -->
+  <rule id="100203" level="12" frequency="15" timeframe="120">
+    <if_matched_sid>100200</if_matched_sid>
+    <same_srcip />
+    <description>XSS: ayni kaynaktan yogun XSS taramasi</description>
+    <mitre><id>T1190</id><id>T1595.002</id></mitre>
+  </rule>
+
+</group>
+
+<group name="web,modsecurity,xss,custom,">
+
+  <!-- ModSecurity / OWASP CRS 941xxx (Apache error log uzerinden) -->
+  <rule id="100210" level="9">
+    <decoded_as>apache-errorlog</decoded_as>
+    <match type="pcre2">ModSecurity: .*\[id "941\d{3}"\]</match>
+    <description>XSS: ModSecurity CRS XSS kurali tetiklendi</description>
+    <mitre><id>T1190</id></mitre>
+  </rule>
+
+  <!-- Tetiklendi ama engellenmedi (DetectionOnly / anomaly esigi asilmadi) -> stored XSS riski -->
+  <rule id="100211" level="12">
+    <if_sid>100210</if_sid>
+    <match type="pcre2">ModSecurity: Warning\.</match>
+    <description>XSS: CRS XSS kurali tetiklendi fakat istek ENGELLENMEDI - icerik kaydedilmis olabilir</description>
+    <mitre><id>T1190</id></mitre>
+  </rule>
+
+</group>
+
+<group name="web,csp,xss,custom,">
+
+  <!-- L3: CSP ihlal raporu (JSON, report-uri). Tarayici eklentileri haric. -->
+  <rule id="100220" level="10">
+    <decoded_as>json</decoded_as>
+    <field name="csp-report.violated-directive" type="pcre2">^script-src</field>
+    <field name="csp-report.blocked-uri" type="pcre2" negate="yes">^(chrome|moz|safari-web|ms-browser)-extension</field>
+    <description>XSS: CSP script-src ihlali - $(csp-report.document-uri) sayfasinda izinsiz betik ($(csp-report.blocked-uri))</description>
+    <mitre><id>T1189</id><id>T1059.007</id></mitre>
+  </rule>
+
+  <!-- L3: Report-only modda ihlal = betik CALISTI -->
+  <rule id="100221" level="12">
+    <if_sid>100220</if_sid>
+    <field name="csp-report.disposition">^report$</field>
+    <description>XSS: CSP report-only ihlali - izinsiz betik tarayicida CALISTI ($(csp-report.document-uri))</description>
+    <mitre><id>T1189</id><id>T1059.007</id><id>T1185</id></mitre>
+  </rule>
+
+</group>
+
+<group name="office365,email,xss,post_exploitation,custom,">
+
+  <!-- L4: M365 - dis adrese yonlendiren / silen gelen kutusu kurali (webmail XSS sonrasi kalicilik) -->
+  <rule id="100230" level="12">
+    <if_group>office365</if_group>
+    <field name="office365.Operation" type="pcre2">^(New-InboxRule|Set-InboxRule|UpdateInboxRules|Set-Mailbox)$</field>
+    <match type="pcre2">(ForwardTo|RedirectTo|ForwardAsAttachmentTo|ForwardingSmtpAddress)</match>
+    <description>XSS post-exploitation: $(office365.UserId) posta kutusunda yonlendirme kurali/ayari ($(office365.Operation)) - kaynak $(office365.ClientIP)</description>
+    <mitre><id>T1114.003</id><id>T1098</id></mitre>
+  </rule>
+
+</group>
+
+<!-- ================= BOLUM B: manager ossec.conf (aktif yanit) ================= -->
+<!--
+  #002 XSS - Aktif yanit (manager /var/ossec/etc/ossec.conf icine)
+  Sadece TARAMA kurallarina (100201, 100203) baglanir.
+  100211 / 100221 / 100230 bilincli olarak baglanmaz: icerik ve hesap temizligi insana / SOAR'a gider.
+  Reverse proxy / CDN arkasindaysan srcip proxy IP'si olur: engellemeyi WAF/CDN katmaninda yap.
+-->
+<active-response>
+  <command>firewall-drop</command>
+  <location>local</location>
+  <rules_id>100201,100203</rules_id>
+  <timeout>1800</timeout>
+</active-response>
+
+<!-- Ic tarayicilari asla engelleme -->
+<global>
+  <white_list>10.10.50.20</white_list>   <!-- Nessus -->
+  <white_list>10.10.50.21</white_list>   <!-- Burp Enterprise / DAST -->
+</global>
+
+<!-- SOAR entegrasyonu (Shuffle) - basari/kalicilik kurallari insana -->
+<integration>
+  <name>shuffle</name>
+  <hook_url>https://shuffle.lab.local/api/v1/hooks/HOOK_ID</hook_url>
+  <rule_id>100201,100203,100211,100221,100230</rule_id>
+  <alert_format>json</alert_format>
+</integration>
+
+<!-- ================= BOLUM C: agent ossec.conf ================= -->
+<!-- #002 XSS - Agent tarafi (web sunucusu) /var/ossec/etc/ossec.conf eklemeleri -->
+<ossec_config>
+  <localfile>
+    <log_format>apache</log_format>
+    <location>/var/log/apache2/access.log</location>
+  </localfile>
+  <localfile>
+    <log_format>apache</log_format>
+    <location>/var/log/apache2/error.log</location>   <!-- ModSecurity CRS 941xxx mesajlari -->
+  </localfile>
+  <localfile>
+    <log_format>json</log_format>
+    <location>/var/log/csp/csp-report.log</location>  <!-- CSP rapor endpoint'inin satir satir JSON ciktisi -->
+  </localfile>
+
+  <!-- Kullanici yuklemelerinde betik/HTML/SVG olusumu (stored XSS tasiyicisi) -->
+  <syscheck>
+    <directories realtime="yes" check_all="yes">/var/www/html/uploads</directories>
+  </syscheck>
+</ossec_config>
+
+<!-- Microsoft 365 audit (manager ossec.conf) - office365 modulu. Kimlik bilgileri Entra ID uygulama kaydindan. -->
+<ossec_config>
+  <office365>
+    <enabled>yes</enabled>
+    <interval>1m</interval>
+    <curl_max_size>1M</curl_max_size>
+    <only_future_events>yes</only_future_events>
+    <api_auth>
+      <tenant_id>TENANT_ID</tenant_id>
+      <client_id>CLIENT_ID</client_id>
+      <client_secret_path>/var/ossec/etc/o365_secret</client_secret_path>
+      <api_type>commercial</api_type>
+    </api_auth>
+    <subscriptions>
+      <subscription>Audit.Exchange</subscription>
+      <subscription>Audit.AzureActiveDirectory</subscription>
+    </subscriptions>
+  </office365>
+</ossec_config>
