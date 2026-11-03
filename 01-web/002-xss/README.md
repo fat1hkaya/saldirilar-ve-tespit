@@ -425,7 +425,7 @@ var json = System.Text.Json.JsonSerializer.Serialize(model);   // <script> için
 | Angular | `bypassSecurityTrustHtml/Url/Script` | Yerleşik sanitizer, `DomSanitizer` ile kontrollü kullanım |
 | Vue | `v-html` | Metin interpolasyonu `{{ }}`, sanitizer |
 | Lit | `unsafeHTML` | Varsayılan şablon bağlama |
-| Sunucu şablonları | `|raw`, `|safe`, `{!! !!}`, `Html.Raw` | Varsayılan otomatik kaçış |
+| Sunucu şablonları | `raw` / `safe` filtreleri, `{!! !!}`, `Html.Raw` | Varsayılan otomatik kaçış |
 | jQuery | `.html(girdi)`, `$(girdi)` | `.text()` |
 
 ### 4.2 Katmanlı savunma kontrol listesi
