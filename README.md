@@ -20,6 +20,7 @@ Bu repo **savunma (blue team) eğitimi** amaçlıdır. Saldırı akışı bölü
 |---|---|---|---|---|---|
 | 001 | SQL Injection (SQLi) | 1. Web ve sınır cihazları | 🔴 Kritik | 2026-10-24 | [01-web/001-sql-injection](01-web/001-sql-injection/) |
 | 002 | Cross-Site Scripting (XSS) | 1. Web ve sınır cihazları | 🟠 Yüksek | 2026-11-03 | [01-web/002-xss](01-web/002-xss/) |
+| 003 | OS Command Injection | 1. Web ve sınır cihazları | 🔴 Kritik | 2026-11-04 | [01-web/003-os-command-injection](01-web/003-os-command-injection/) |
 
 Tüm liste ve öncelikler: [ROADMAP.md](ROADMAP.md)
 

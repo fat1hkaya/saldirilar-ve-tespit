@@ -26,7 +26,7 @@ Bu liste, kurumsal bir SOC'ta (Windows/Active Directory ağırlıklı ağ, Micro
 |---|---|---|---|---|
 | 001 ✅ | SQL Injection | T1190 | 🔴 | MOVEit, FortiWeb, Drupal: internete açık uygulamadan doğrudan veri ihlali |
 | 002 ✅ | Cross-Site Scripting (XSS) | T1190, T1539 | 🟠 | Oturum çalma, yönetici paneli ele geçirme; WAF alarmlarının büyük kısmı |
-| 003 | OS Command Injection | T1190, T1059 | 🔴 | Web'den doğrudan sunucuda komut; sınır cihazı CVE'lerinin çoğu bu sınıfta |
+| 003 ✅ | OS Command Injection | T1190, T1059 | 🔴 | Web'den doğrudan sunucuda komut; sınır cihazı CVE'lerinin çoğu bu sınıfta |
 | 004 | Path Traversal ve LFI/RFI | T1190, T1083 | 🟠 | Yapılandırma ve parola dosyası okuma; sık taranan zafiyet |
 | 005 | Dosya yükleme ve web shell | T1505.003 | 🔴 | Web saldırılarının kalıcılık adımı; IIS/Apache süreçlerinden kabuk |
 | 006 | SSRF ve bulut metadata erişimi | T1190, T1552.005 | 🟠 | İç ağa ve bulut kimlik bilgilerine (IMDS) köprü |
