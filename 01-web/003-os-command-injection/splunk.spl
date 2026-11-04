@@ -1,0 +1,202 @@
+```#003 OS Command Injection - Splunk sorgulari. Her bolum ayri bir aramadir; "=====" satirlari arasini kopyala. index/sourcetype degerlerini ortamina gore degistir.```
+
+```=================== 01-imza-avciligi ===================```
+```#003 Komut enjeksiyonu | L1 Imza | Cift URL decode + bosluk normalizasyonu sonrasi "ayrac + komut" yapi kategorileri. Tek basina ayrac (& ;) sinyal degildir.```
+index=web (sourcetype=access_combined OR sourcetype=nginx:plus:kv OR sourcetype=ms:iis:auto)
+| eval raw_uri=coalesce(uri, cs_uri_stem." ".cs_uri_query)
+| eval u=lower(urldecode(urldecode(raw_uri)))
+| eval u=replace(u, "\$\{?ifs\}?|%09|\t|\+", " ")
+| eval ayrac_komut="(;|\||&&|\|\||\n|`|\$\() ?(id|whoami|uname|hostname|cat|ls|pwd|sleep|ping|nslookup|dig|curl|wget|nc|ncat|bash|sh|python[0-9]?|perl|php|busybox|cmd|powershell|pwsh|certutil|bitsadmin|ipconfig|systeminfo|net|tasklist)\b"
+| eval cmd_cat=case(
+    match(u, "\$\(|`[^`]{1,80}`"),                                     "komut_ikamesi",
+    match(u, ayrac_komut),                                             "ayrac_komut",
+    match(u, "\$\{?ifs\}?") OR match(raw_uri, "(?i)\$\{?IFS"),         "ifs_bosluk_ikamesi",
+    match(u, "(;|&&|\|) ?(sleep|ping -[cn]|timeout) ?[0-9]"),          "zaman_gecikmesi",
+    match(u, "(base64 -d|xxd -r|-enc(odedcommand)? [a-z0-9+/=]{20,})"), "kodlanmis_yuk",
+    match(u, "(cmd(\.exe)? /c|powershell(\.exe)? -|%comspec%|\^&)"),     "windows_kabuk",
+    match(u, "/bin/(ba|da|z)?sh|/dev/tcp/"),                           "kabuk_yolu",
+    true(), null())
+| where isnotnull(cmd_cat)
+| stats count AS istek min(_time) AS ilk max(_time) AS son values(cmd_cat) AS kategori values(status) AS durum dc(uri_path) AS endpoint_sayisi values(uri_path) AS endpoint values(http_user_agent) AS ua BY src
+| eval sure_dk=round((son-ilk)/60,1)
+| convert ctime(ilk) ctime(son)
+| sort - istek
+
+```=================== 02-otomatik-arac ===================```
+```#003 Komut enjeksiyonu | L1 Otomatik arac | Enjeksiyon / web tarayici User-Agent'lari veya ayni endpoint'e yuksek varyant hacmi```
+index=web sourcetype=access_combined earliest=-15m
+| eval ua=lower(http_user_agent)
+| eval arac=if(match(ua, "commix|nuclei|acunetix|nikto|wapiti|arachni|zgrab|masscan|burp|sqlmap"), 1, 0)
+| stats count AS istek sum(arac) AS arac_isabet dc(uri_query) AS varyant values(http_user_agent) AS ua BY src, uri_path
+| where arac_isabet > 0 OR (istek > 200 AND varyant > 100)
+| eval sebep=if(arac_isabet>0, "Arac User-Agent", "Yuksek hacim + varyant")
+| sort - istek
+
+```=================== 03-zaman-tabanli-kor-enjeksiyon ===================```
+```#003 Komut enjeksiyonu | L2 Kor dogrulama | Imzali isteklerde yanit suresinin ayni endpoint'in normal suresine gore sicramasi. Erisim log'unda %D (mikrosaniye) alani gerekir -> response_time_ms.```
+index=web sourcetype=access_combined earliest=-24h
+| eval response_time_ms=round(coalesce(response_time_microseconds/1000, request_time*1000, time_taken), 0)
+| eval u=lower(urldecode(urldecode(coalesce(uri, ""))))
+| eval imzali=if(match(u, "(;|\||&&|\n|`|\$\() ?(sleep|ping|timeout|id|whoami|uname|cat|curl|wget|nslookup)\b"), 1, 0)
+| eventstats median(eval(if(imzali=0, response_time_ms, null()))) AS taban_ms BY uri_path
+| where imzali=1 AND isnotnull(taban_ms) AND response_time_ms > 3000 AND response_time_ms > (taban_ms * 20)
+| stats count AS sicrama max(response_time_ms) AS max_ms values(taban_ms) AS taban_ms values(status) AS durum values(uri) AS ornek_istek BY src, dest, uri_path
+| eval yorum="Imzali istekte yanit " . max_ms . " ms (taban " . taban_ms . " ms) -> zaman tabanli kor komut enjeksiyonu dogrulamasi olasi"
+| sort - max_ms
+
+```=================== 04-modsecurity-crs-932 ===================```
+```#003 Komut enjeksiyonu | ModSecurity JSON audit log | CRS 932xxx (RCE) tetiklenmeleri; engellenen vs gecen, yontem ve endpoint ayrimi```
+index=waf sourcetype=modsec:audit:json
+| spath path=transaction.client_ip output=src
+| spath path=transaction.host_ip output=dest
+| spath path=transaction.request.uri output=uri
+| spath path=transaction.request.method output=yontem
+| spath path=transaction.response.http_code output=durum
+| spath path=transaction.messages{}.details.ruleId output=rule_id
+| spath path=transaction.messages{}.message output=mesaj
+| mvexpand rule_id
+| where like(rule_id, "932%")
+| eval sonuc=if(durum=403, "ENGELLENDI", "GECTI (" . durum . ")")
+| rex field=uri "^(?<uri_path>[^?]+)"
+| stats count AS tetiklenme values(rule_id) AS kurallar values(mesaj) AS mesajlar values(yontem) AS yontem BY src, dest, uri_path, sonuc
+| sort - tetiklenme
+
+```=================== 05-auth-log-kullanici-adinda-kabuk ===================```
+```#003 Komut enjeksiyonu | L2 Ikinci dereceden | Kimlik dogrulama log'larinda kullanici adi alaninda kabuk karakterleri (NetScaler CVE-2026-88771 kalibi). Sinir cihazi syslog'u + uygulama auth log'lari.```
+(index=netfw OR index=vpn OR index=auth) (sourcetype=citrix:netscaler:syslog OR sourcetype=pan:globalprotect OR sourcetype=pulse:connectsecure OR sourcetype=fortinet:fortigate_event OR sourcetype=linux_secure OR sourcetype=app:auth)
+| eval kullanici=coalesce(user, src_user, username, login)
+| where isnotnull(kullanici)
+| eval k=lower(urldecode(kullanici))
+| where match(k, "[;|`]|\$\(|\$\{|&&|/bin/|/dev/tcp|\b(curl|wget|bash|sh|nc|python|perl|base64)\b")
+| stats count AS deneme min(_time) AS ilk max(_time) AS son values(kullanici) AS kullanici_adlari values(action) AS sonuc BY src, dest, sourcetype
+| convert ctime(ilk) ctime(son)
+| eval yorum="Kullanici adi alaninda kabuk yapisi -> log'u isleyen betiklerde ikinci dereceden enjeksiyon riski; cihazin surec/cikis trafigini kontrol et"
+| sort - deneme
+
+```=================== 06-linux-web-kullanicisi-kabuk ===================```
+```#003 Komut enjeksiyonu | L3 Surec (Linux) | auditd execve: web/servis kullanicisinin calistirdigi kabuk, kesif ve indirme araclari. Key: www_exec / app_exec (README 3.2).```
+index=os sourcetype=linux:audit (key="www_exec" OR key="app_exec") type=SYSCALL
+| eval prog=mvindex(split(exe, "/"), -1)
+| eval sinif=case(
+    match(prog, "^(sh|bash|dash|zsh|ash|busybox)$"),                       "kabuk",
+    match(prog, "^(id|whoami|uname|hostname|ifconfig|ip|netstat|ss|ps|cat|ls|env)$"), "kesif",
+    match(prog, "^(curl|wget|nc|ncat|socat|ssh|scp|tftp|ftp)$"),            "indirme_tunel",
+    match(prog, "^(python[0-9.]*|perl|php|ruby|node|base64|xxd|openssl)$"), "yorumlayici_kod_cozme",
+    match(prog, "^(crontab|at|systemctl|useradd|chmod|chattr)$"),           "kalicilik",
+    true(), "diger")
+| where sinif!="diger"
+| stats count AS calisma min(_time) AS ilk max(_time) AS son values(sinif) AS siniflar values(exe) AS programlar values(ppid) AS ppid dc(sinif) AS sinif_sayisi BY host, euid, key
+| eval onem=case(sinif_sayisi>=3, "KRITIK - kabuk+kesif+indirme zinciri", mvfind(siniflar, "indirme_tunel")>=0 OR mvfind(siniflar, "kalicilik")>=0, "KRITIK", true(), "YUKSEK")
+| convert ctime(ilk) ctime(son)
+| sort - sinif_sayisi
+
+```=================== 07-windows-web-sureci-kabuk ===================```
+```#003 Komut enjeksiyonu | L3 Surec (Windows) | Sysmon EID 1: web sunucusu sureci -> kabuk / LOLBin. Ata surec zincirini de (GrandParent) kontrol eder.```
+index=sysmon (sourcetype="XmlWinEventLog:Microsoft-Windows-Sysmon/Operational" OR source="XmlWinEventLog:Microsoft-Windows-Sysmon/Operational") EventCode=1
+| eval parent=lower(mvindex(split(ParentImage, "\\"), -1)), child=lower(mvindex(split(Image, "\\"), -1))
+| where match(parent, "^(w3wp|httpd|nginx|php-cgi|php|java|javaw|tomcat\d*|node|dotnet|sqlservr)\.exe$")
+    AND match(child, "^(cmd|powershell|pwsh|whoami|net|net1|ipconfig|systeminfo|nltest|certutil|bitsadmin|rundll32|regsvr32|mshta|wscript|cscript|curl|tasklist|reg|schtasks)\.exe$")
+| eval kodlu=if(match(lower(CommandLine), "-e(nc|ncodedcommand)?\s+[a-z0-9+/=]{20,}|frombase64string|downloadstring|invoke-webrequest|iwr |urlcache|/transfer"), "EVET", "hayir")
+| stats count AS calisma min(_time) AS ilk max(_time) AS son values(child) AS cocuk values(CommandLine) AS komutlar values(User) AS kullanici max(kodlu) AS kodlu_veya_indirme BY host, parent
+| eval onem=if(kodlu_veya_indirme="EVET", "KRITIK", "YUKSEK")
+| convert ctime(ilk) ctime(son)
+| sort - calisma
+
+```=================== 08-web-kokunde-yeni-dosya ===================```
+```#003 Komut enjeksiyonu | L4 Etki | Web kokunde / gecici dizinlerde yeni betik veya calistirilabilir: Wazuh syscheck (Linux) ve Sysmon EID 11 (Windows).```
+(index=wazuh sourcetype=wazuh:alerts rule.groups{}=syscheck syscheck.event=added (syscheck.path="/var/www/*" OR syscheck.path="/tmp/*" OR syscheck.path="/dev/shm/*"))
+ OR (index=sysmon EventCode=11 (TargetFilename="*\\inetpub\\wwwroot\\*" OR TargetFilename="*\\Windows\\Temp\\*"))
+| eval dosya=coalesce('syscheck.path', TargetFilename), host=coalesce('agent.name', host)
+| eval uzanti=lower(replace(dosya, "^.*\.", ""))
+| where match(uzanti, "^(php|phtml|jsp|jspx|aspx|ashx|asmx|cgi|pl|py|sh|elf|so|ps1|bat|exe|dll|war)$") OR NOT match(dosya, "\.")
+| stats count AS dosya_sayisi values(dosya) AS dosyalar min(_time) AS ilk BY host
+| convert ctime(ilk)
+| sort - dosya_sayisi
+
+```=================== 09-sinir-cihazi-ve-dmz-cikis ===================```
+```#003 Komut enjeksiyonu | L4 Etki | Sinir cihazi / DMZ sunucusunun KENDI IP'sinden internete yeni hedef veya ic aga SMB/WinRM/SSH. Lookup: kritik_cihazlar.csv (ip, rol) ve izinli_cikis.csv (ip, dest).```
+index=netfw sourcetype=pan:traffic OR sourcetype=fortinet:fortigate_traffic OR sourcetype=opnsense:filterlog earliest=-24h
+| lookup kritik_cihazlar.csv ip AS src_ip OUTPUT rol
+| where isnotnull(rol)
+| lookup izinli_cikis.csv ip AS src_ip, dest AS dest_ip OUTPUT dest AS izinli
+| eval yon=if(cidrmatch("10.0.0.0/8", dest_ip) OR cidrmatch("172.16.0.0/12", dest_ip) OR cidrmatch("192.168.0.0/16", dest_ip), "ic", "dis")
+| where isnull(izinli) AND ((yon="ic" AND dest_port IN (22, 135, 445, 3389, 5985, 5986)) OR yon="dis")
+| stats count AS baglanti dc(dest_ip) AS hedef_sayisi values(dest_ip) AS hedefler values(dest_port) AS portlar sum(bytes_out) AS giden_bayt min(_time) AS ilk BY src_ip, rol, yon, action
+| eval yorum=if(yon="ic", "Sinir cihazi/DMZ'den ic aga yonetim protokolu -> yanal hareket olasi (CVE-2024-3400 kalibi)", "Izin listesi disinda dis baglanti -> arac indirme / ters kabuk / tunel olasi")
+| convert ctime(ilk)
+| sort - baglanti
+
+```=================== 10-sunucudan-bant-disi-dns ===================```
+```#003 Komut enjeksiyonu | L4 Kor/OAST | Sunucu ve sinir cihazlarindan dis DNS: bilinen OAST servisleri ve uzun/rastgele alt alan adlari.```
+index=dns (sourcetype=stream:dns OR sourcetype=zeek:dns OR sourcetype="MSAD:NT6:DNS")
+| lookup kritik_cihazlar.csv ip AS src OUTPUT rol
+| where isnotnull(rol)
+| eval q=lower(query)
+| eval ilk_etiket=mvindex(split(q, "."), 0)
+| eval oast=if(match(q, "(oast\.(fun|live|site|online|pro|me)|interact\.sh|burpcollaborator\.net|oastify\.com|dnslog\.cn|requestbin|canarytokens)"), 1, 0)
+| eval uzun_rastgele=if(len(ilk_etiket)>=25 AND match(ilk_etiket, "^[a-z0-9]+$") AND match(ilk_etiket, "[0-9].*[0-9].*[0-9]"), 1, 0)
+| where oast=1 OR uzun_rastgele=1
+| stats count AS sorgu values(q) AS sorgular min(_time) AS ilk BY src, rol
+| convert ctime(ilk)
+| sort - sorgu
+
+```=================== 11-korelasyon-rba ===================```
+```#003 Komut enjeksiyonu | RBA | Istek katmani -> src (saldirgan IP), surec ve etki katmani -> dest (ele gecirilen host). Esik: host >= 80, IP >= 60.```
+| multisearch
+    [ search index=web sourcetype=access_combined earliest=-24h
+      | eval u=lower(urldecode(urldecode(uri)))
+      | where match(u, "(;|\||&&|\n|`|\$\() ?(id|whoami|uname|cat|sleep|curl|wget|nc|bash|sh|cmd|powershell)\b")
+      | eval puan=if(status=200, 15, 5), risk_nesnesi="ip:" . src ]
+    [ search index=web sourcetype=access_combined earliest=-24h
+      | eval ua=lower(http_user_agent) | where match(ua, "commix|nuclei|acunetix|nikto")
+      | eval puan=25, risk_nesnesi="ip:" . src ]
+    [ search index=waf sourcetype=modsec:audit:json earliest=-24h "932"
+      | spath path=transaction.client_ip output=src | spath path=transaction.host_ip output=dest | spath path=transaction.response.http_code output=durum
+      | where durum!=403
+      | eval puan=40, risk_nesnesi=mvappend("ip:" . src, "host:" . dest) ]
+    [ search index=os sourcetype=linux:audit (key="www_exec" OR key="app_exec") type=SYSCALL earliest=-24h
+      | eval prog=mvindex(split(exe, "/"), -1)
+      | eval puan=case(match(prog, "^(curl|wget|nc|ncat|socat|id|whoami|uname)$"), 100, match(prog, "^(sh|bash|dash|busybox)$"), 80, true(), 0)
+      | where puan>0 | eval risk_nesnesi="host:" . host ]
+    [ search index=sysmon EventCode=1 earliest=-24h (ParentImage="*\\w3wp.exe" OR ParentImage="*\\httpd.exe" OR ParentImage="*\\java.exe" OR ParentImage="*\\php-cgi.exe" OR ParentImage="*\\node.exe") (Image="*\\cmd.exe" OR Image="*\\powershell.exe" OR Image="*\\pwsh.exe" OR Image="*\\whoami.exe" OR Image="*\\certutil.exe")
+      | eval puan=80, risk_nesnesi="host:" . host ]
+| mvexpand risk_nesnesi
+| stats sum(puan) AS risk dc(puan) AS katman_cesidi BY risk_nesnesi
+| eval tur=if(like(risk_nesnesi, "host:%"), "host", "ip")
+| where (tur="ip" AND risk>=60) OR (tur="host" AND risk>=80)
+| eval oncelik=case(tur="host" AND risk>=180, "KRITIK", tur="host", "YUKSEK", risk>=100, "YUKSEK", true(), "ORTA")
+| sort - risk
+
+```=================== 12-dashboard-panelleri ===================```
+```#003 Komut enjeksiyonu | Dashboard panelleri | Her blok ayri bir panel sorgusudur.```
+
+```Panel 1 - Zaman cizelgesi: imza kategorilerine gore istek sayisi```
+index=web sourcetype=access_combined
+| eval u=lower(urldecode(urldecode(uri)))
+| eval kategori=case(match(u,"\$\(|`"),"komut_ikamesi", match(u,"(;|\||&&) ?(id|whoami|uname|cat)\b"),"kesif", match(u,"(;|\||&&) ?(sleep|ping)\b"),"gecikme", match(u,"(;|\||&&) ?(curl|wget|nc)\b"),"indirme", match(u,"cmd(\.exe)? /c|powershell"),"windows")
+| where isnotnull(kategori)
+| timechart span=1h count BY kategori
+
+```Panel 2 - Web kullanicisi tarafindan calistirilan programlar (son 7 gun, host bazinda)```
+index=os sourcetype=linux:audit key="www_exec" type=SYSCALL earliest=-7d
+| eval prog=mvindex(split(exe, "/"), -1)
+| chart count OVER host BY prog limit=15
+
+```Panel 3 - En cok hedeflenen endpoint'ler ve WAF'tan gecme orani (CRS 932)```
+index=waf sourcetype=modsec:audit:json
+| spath path=transaction.request.uri output=uri
+| spath path=transaction.response.http_code output=durum
+| spath path=transaction.messages{}.details.ruleId output=rule_id
+| where match(mvjoin(rule_id, ","), "932\d{3}")
+| rex field=uri "^(?<uri_path>[^?]+)"
+| stats count AS deneme count(eval(durum!=403)) AS gecen BY uri_path
+| eval gecme_orani=round(100*gecen/deneme,1)."%"
+| sort - deneme
+
+```Panel 4 - Sinir cihazlarindan izin listesi disi cikis (son 7 gun)```
+index=netfw earliest=-7d
+| lookup kritik_cihazlar.csv ip AS src_ip OUTPUT rol
+| where isnotnull(rol)
+| lookup izinli_cikis.csv ip AS src_ip, dest AS dest_ip OUTPUT dest AS izinli
+| where isnull(izinli)
+| timechart span=1d count BY rol

@@ -1,0 +1,198 @@
+<!-- #003 OS Command Injection - Wazuh
+  Bolum A: manager /var/ossec/etc/rules/local_rules.xml icine
+  Bolum B: manager /var/ossec/etc/ossec.conf icine
+  Bolum C: agent (web sunucusu Linux + IIS Windows) /var/ossec/etc/ossec.conf icine
+-->
+
+<!-- ================= BOLUM A: local_rules.xml ================= -->
+<!--
+  #003 OS Command Injection - Wazuh ozel kurallari (ID blogu 100300-100399)
+  Kurulum : icerigi manager'da /var/ossec/etc/rules/local_rules.xml dosyasina ekle
+  Test    : /var/ossec/bin/wazuh-logtest  (ornek.log icindeki satirlarla)
+  Uygula  : systemctl restart wazuh-manager
+  Not     : 31100 (web access log tabani), 31101 (4xx), 31104 (yerlesik yaygin web saldirisi), apache-errorlog decoder,
+            80700 (auditd tabani, 0365-auditd_rules.xml) ve 61603 (Sysmon EID 1, 0595-win-sysmon_rules.xml)
+            Wazuh'un yerlesik bilesenleridir; surumune gore dogrula.
+  Sira    : 100301 (arac UA) 100300'den ONCE tanimlanir; ayni parent altinda ilk eslesen kardes kural kazanir.
+-->
+
+<group name="web,attack,command_injection,custom,">
+
+  <!-- L1: Komut enjeksiyonu / web tarayici araci User-Agent'i (imzadan once degerlendirilir) -->
+  <rule id="100301" level="10">
+    <if_sid>31100,31101,31104</if_sid>
+    <match type="pcre2">(?i)(commix|nuclei)</match>
+    <description>Komut enjeksiyonu: otomatik enjeksiyon/tarama araci User-Agent tespiti</description>
+    <mitre><id>T1190</id><id>T1595.002</id></mitre>
+  </rule>
+
+  <!-- L1: Gelismis imza - ayrac/ikame + komut adi, IFS bosluk ikamesi, Windows kabuk yapilari (URL kodlu haller dahil) -->
+  <rule id="100300" level="8">
+    <if_sid>31100,31101,31104</if_sid>
+    <url type="pcre2">(?i)((;|%3b|\||%7c|&amp;&amp;|%26%26|%0a|`|%60|\$\(|%24%28)(\s|%20|\+|%09)*(id|whoami|uname|hostname|cat|ls|pwd|sleep|ping|nslookup|dig|curl|wget|nc|ncat|bash|sh|python\d?|perl|busybox|cmd|powershell|certutil|ipconfig|systeminfo)\b|\$\{?IFS|%24%7bIFS|cmd(\.exe)?(\s|%20|\+)+/c|powershell(\.exe)?(\s|%20|\+)+-|/bin/(ba|da)?sh|/dev/tcp/)</url>
+    <description>Komut enjeksiyonu: gelismis imza eslesmesi - $(url)</description>
+    <mitre><id>T1190</id><id>T1059.004</id><id>T1059.003</id></mitre>
+    <group>pci_dss_6.5.1,gdpr_IV_35.7.d,nist_800_53_SI.4,</group>
+  </rule>
+
+  <!-- L2: Imza + HTTP 200 = komut calismis olabilir. Basari degil; surec katmani (100320/100330) ile dogrula. -->
+  <rule id="100302" level="10">
+    <if_sid>100300</if_sid>
+    <id>^200</id>
+    <description>Komut enjeksiyonu: imza eslesen istek 200 dondu - ayni host'ta web kullanicisi surecini kontrol et</description>
+    <mitre><id>T1190</id></mitre>
+  </rule>
+
+  <!-- L2: Frekans - 2 dk icinde ayni IP'den 15 imza -->
+  <rule id="100303" level="12" frequency="15" timeframe="120">
+    <if_matched_sid>100300</if_matched_sid>
+    <same_srcip />
+    <description>Komut enjeksiyonu: ayni kaynaktan yogun enjeksiyon taramasi</description>
+    <mitre><id>T1190</id><id>T1595.002</id></mitre>
+  </rule>
+
+</group>
+
+<group name="web,modsecurity,command_injection,custom,">
+
+  <!-- ModSecurity / OWASP CRS 932xxx (REQUEST-932-APPLICATION-ATTACK-RCE, Apache error log uzerinden) -->
+  <rule id="100310" level="9">
+    <decoded_as>apache-errorlog</decoded_as>
+    <match type="pcre2">ModSecurity: .*\[id "932\d{3}"\]</match>
+    <description>Komut enjeksiyonu: ModSecurity CRS RCE (932xxx) kurali tetiklendi</description>
+    <mitre><id>T1190</id></mitre>
+  </rule>
+
+  <!-- Tetiklendi ama engellenmedi (DetectionOnly / anomali esigi asilmadi) -> komut calismis olabilir -->
+  <rule id="100311" level="12">
+    <if_sid>100310</if_sid>
+    <match type="pcre2">ModSecurity: Warning\.</match>
+    <description>Komut enjeksiyonu: CRS RCE kurali tetiklendi fakat istek ENGELLENMEDI - surec katmanini kontrol et</description>
+    <mitre><id>T1190</id><id>T1059.004</id></mitre>
+  </rule>
+
+</group>
+
+<group name="audit,command_injection,post_exploitation,custom,">
+
+  <!-- L3: auditd execve - web kullanicisi (key www_exec / app_exec) bir program calistirdi (kabuk dahil).
+       Meslru alt surecler (sendmail, convert vb.) varsa ayri bir level 0 kural ile dar allowlist yaz. -->
+  <rule id="100320" level="12">
+    <if_sid>80700</if_sid>
+    <field name="audit.key" type="pcre2">^(www_exec|app_exec)$</field>
+    <description>Komut enjeksiyonu (basari olasi): web/servis kullanicisi (euid $(audit.euid)) program calistirdi - $(audit.exe)</description>
+    <mitre><id>T1059.004</id><id>T1190</id></mitre>
+  </rule>
+
+  <!-- L3: Kesif komutu - saldirganin "kimim, neredeyim" adimi -->
+  <rule id="100321" level="14">
+    <if_sid>100320</if_sid>
+    <field name="audit.exe" type="pcre2">/(id|whoami|uname|hostname|ifconfig|ip|netstat|ss|ps|env)$</field>
+    <description>Komut enjeksiyonu BASARILI: web kullanicisi kesif komutu calistirdi - $(audit.exe) (host kesfi)</description>
+    <mitre><id>T1033</id><id>T1082</id><id>T1016</id><id>T1059.004</id></mitre>
+  </rule>
+
+  <!-- L3/L4: Indirme / tunel araci - ikinci asama yuk veya ters kabuk -->
+  <rule id="100322" level="14">
+    <if_sid>100320</if_sid>
+    <field name="audit.exe" type="pcre2">/(curl|wget|nc|ncat|socat|ssh|scp|tftp|ftp|busybox)$</field>
+    <description>Komut enjeksiyonu BASARILI: web kullanicisi indirme/tunel araci calistirdi - $(audit.exe)</description>
+    <mitre><id>T1105</id><id>T1090</id><id>T1059.004</id></mitre>
+  </rule>
+
+</group>
+
+<group name="windows,sysmon,command_injection,post_exploitation,custom,">
+
+  <!-- L3: Sysmon EID 1 - web sunucusu sureci kabuk / LOLBin baslatti -->
+  <rule id="100330" level="12">
+    <if_sid>61603</if_sid>
+    <field name="win.eventdata.parentImage" type="pcre2">(?i)\\(w3wp|httpd|nginx|php-cgi|php|java|javaw|tomcat\d*|node)\.exe$</field>
+    <field name="win.eventdata.image" type="pcre2">(?i)\\(cmd|powershell|pwsh|whoami|net|net1|ipconfig|systeminfo|nltest|certutil|bitsadmin|rundll32|regsvr32|mshta|wscript|cscript|curl|schtasks)\.exe$</field>
+    <description>Komut enjeksiyonu (basari olasi): web sureci $(win.eventdata.parentImage) -> $(win.eventdata.image) baslatti</description>
+    <mitre><id>T1059.003</id><id>T1059.001</id><id>T1190</id></mitre>
+  </rule>
+
+  <!-- L3: Ayni zincirde kodlanmis PowerShell veya indirme LOLBin'i -->
+  <rule id="100331" level="14">
+    <if_sid>100330</if_sid>
+    <field name="win.eventdata.commandLine" type="pcre2">(?i)(\s-e(nc|ncodedcommand)?\s+[A-Za-z0-9+/=]{20,}|frombase64string|downloadstring|invoke-webrequest|\biwr\s|urlcache|/transfer\s)</field>
+    <description>Komut enjeksiyonu BASARILI: web sureci altinda kodlanmis PowerShell / indirme komutu - $(win.eventdata.commandLine)</description>
+    <mitre><id>T1059.001</id><id>T1027</id><id>T1105</id></mitre>
+  </rule>
+
+</group>
+
+<!-- ================= BOLUM B: manager ossec.conf (aktif yanit) ================= -->
+<!--
+  #003 OS Command Injection - Aktif yanit (manager /var/ossec/etc/ossec.conf icine)
+  Sadece TARAMA kurallarina (100301, 100303) baglanir.
+  100311 / 100320-100322 / 100330-100331 bilincli olarak baglanmaz: komut zaten calismistir;
+  IP engellemek arka kapiyi, cron'u veya baska IP'ye giden ters kabugu kaldirmaz. Host izolasyonu + delil insana / SOAR'a gider.
+  Reverse proxy / CDN arkasindaysan srcip proxy IP'si olur: engellemeyi WAF/CDN katmaninda yap.
+-->
+<active-response>
+  <command>firewall-drop</command>
+  <location>local</location>
+  <rules_id>100301,100303</rules_id>
+  <timeout>1800</timeout>
+</active-response>
+
+<!-- Ic tarayicilari asla engelleme -->
+<global>
+  <white_list>10.10.50.20</white_list>   <!-- Nessus -->
+  <white_list>10.10.50.21</white_list>   <!-- Burp Enterprise / DAST -->
+</global>
+
+<!-- SOAR entegrasyonu (Shuffle) - basari kurallari insan onayli izolasyon akisina -->
+<integration>
+  <name>shuffle</name>
+  <hook_url>https://shuffle.lab.local/api/v1/hooks/HOOK_ID</hook_url>
+  <rule_id>100301,100303,100311,100320,100321,100322,100330,100331</rule_id>
+  <alert_format>json</alert_format>
+</integration>
+
+<!-- ================= BOLUM C: agent ossec.conf ================= -->
+<!-- #003 - Linux web sunucusu agent'i /var/ossec/etc/ossec.conf eklemeleri -->
+<ossec_config>
+  <localfile>
+    <log_format>apache</log_format>
+    <location>/var/log/apache2/access.log</location>
+  </localfile>
+  <localfile>
+    <log_format>apache</log_format>
+    <location>/var/log/apache2/error.log</location>   <!-- ModSecurity CRS 932xxx mesajlari -->
+  </localfile>
+  <localfile>
+    <log_format>audit</log_format>
+    <location>/var/log/audit/audit.log</location>     <!-- README 3.2 auditd kurallari: www_exec, app_exec, webroot_write, cron_change -->
+  </localfile>
+
+  <!-- Web koku, gecici dizinler ve cron: web shell / ikinci asama / kalicilik -->
+  <syscheck>
+    <directories realtime="yes" check_all="yes" report_changes="no">/var/www</directories>
+    <directories realtime="yes" check_all="yes">/etc/cron.d,/var/spool/cron</directories>
+    <directories realtime="yes" check_all="yes" restrict="\.(sh|py|pl|php|elf|so)$">/tmp,/dev/shm</directories>
+  </syscheck>
+</ossec_config>
+
+<!-- #003 - Windows IIS sunucusu agent'i (C:\Program Files (x86)\ossec-agent\ossec.conf) -->
+<ossec_config>
+  <localfile>
+    <location>Microsoft-Windows-Sysmon/Operational</location>
+    <log_format>eventchannel</log_format>
+  </localfile>
+  <localfile>
+    <location>Microsoft-Windows-PowerShell/Operational</location>
+    <log_format>eventchannel</log_format>
+    <query>Event/System[EventID=4104]</query>
+  </localfile>
+  <localfile>
+    <location>C:\inetpub\logs\LogFiles\W3SVC1\u_ex*.log</location>
+    <log_format>iis</log_format>
+  </localfile>
+
+  <syscheck>
+    <directories realtime="yes" check_all="yes">C:\inetpub\wwwroot</directories>
+  </syscheck>
+</ossec_config>
